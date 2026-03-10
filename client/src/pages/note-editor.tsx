@@ -21,15 +21,56 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Save, ArrowLeft, Globe, Lock, GitFork, Bookmark, BookmarkCheck, Download, FileText, FileCode, File } from "lucide-react";
+import {
+  Save,
+  ArrowLeft,
+  Globe,
+  Lock,
+  GitFork,
+  Bookmark,
+  BookmarkCheck,
+  Download,
+  FileText,
+  FileCode,
+  File,
+  MessageSquare,
+} from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { EditorToolbar } from "@/components/editor-toolbar";
 import { ShareDialog } from "@/components/share-dialog";
 import type { Note } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  CommentDecorationExtension,
+  setCommentThreads,
+  getCommentPositions,
+  type CommentThreadSummary,
+} from "@/extensions/comment-decoration";
 
-type NoteWithOwner = Note & { isOwner?: boolean; collaboratorRole?: string | null };
+type NoteWithOwner = Note & {
+  isOwner?: boolean;
+  collaboratorRole?: string | null;
+};
+
+type NoteCommentThread = CommentThreadSummary & {
+  noteId: string;
+  createdAt: string;
+  comments: {
+    id: string;
+    content: string;
+    createdAt: string;
+    user: { displayName: string; email: string; username: string };
+  }[];
+};
 
 export default function NoteEditor() {
   const params = useParams<{ id: string }>();
@@ -42,6 +83,15 @@ export default function NoteEditor() {
   const [isPublic, setIsPublic] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [contentLoaded, setContentLoaded] = useState(false);
+  const [selectionRange, setSelectionRange] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const [isCommentDialogOpen, setIsCommentDialogOpen] = useState(false);
+  const [newCommentText, setNewCommentText] = useState("");
+  const [replyTextByThread, setReplyTextByThread] = useState<
+    Record<string, string>
+  >({});
 
   const editor = useEditor({
     extensions: [
@@ -57,6 +107,7 @@ export default function NoteEditor() {
         placeholder:
           "Start writing your note here...\n\nUse the toolbar above to format your content with headings, lists, code blocks, and more.",
       }),
+      CommentDecorationExtension,
     ],
     editorProps: {
       attributes: {
@@ -91,6 +142,15 @@ export default function NoteEditor() {
 
   const isOwner = isNew || note?.isOwner || note?.ownerId === user?.id;
   const canEdit = isOwner || note?.collaboratorRole === "editor";
+  const canComment =
+    isOwner ||
+    note?.collaboratorRole === "editor" ||
+    note?.collaboratorRole === "commenter";
+
+  const { data: commentThreads } = useQuery<NoteCommentThread[]>({
+    queryKey: ["/api/notes", params.id, "comments"],
+    enabled: !isNew,
+  });
 
   useEffect(() => {
     if (note && editor && !contentLoaded) {
@@ -105,7 +165,7 @@ export default function NoteEditor() {
             note.content
               .split("\n")
               .map((line) => `<p>${line || "<br>"}</p>`)
-              .join("")
+              .join(""),
           );
         }
       } else {
@@ -122,9 +182,37 @@ export default function NoteEditor() {
     }
   }, [editor, canEdit]);
 
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => {
+      const { from, to } = editor.state.selection;
+      if (from < to && canComment) {
+        setSelectionRange({ from, to });
+      } else {
+        setSelectionRange(null);
+      }
+    };
+    editor.on("selectionUpdate", handler);
+    return () => {
+      editor.off("selectionUpdate", handler);
+    };
+  }, [editor, canComment]);
+
+  useEffect(() => {
+    if (!editor || !commentThreads) return;
+    const summaries: CommentThreadSummary[] = commentThreads.map((t) => ({
+      id: t.id,
+      fromPos: t.fromPos,
+      toPos: t.toPos,
+      resolvedAt: t.resolvedAt ?? null,
+    }));
+    setCommentThreads(editor, summaries);
+  }, [editor, commentThreads]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const content = editor?.getHTML() || "";
+      const commentPositions = editor ? getCommentPositions(editor) : [];
       if (isNew) {
         const res = await apiRequest("POST", "/api/notes", {
           title,
@@ -137,6 +225,7 @@ export default function NoteEditor() {
           title,
           content,
           isPublic,
+          commentPositions,
         });
         return res.json();
       }
@@ -200,18 +289,135 @@ export default function NoteEditor() {
     },
   });
 
+  const createCommentMutation = useMutation({
+    mutationFn: async ({
+      from,
+      to,
+      content,
+    }: {
+      from: number;
+      to: number;
+      content: string;
+    }) => {
+      const res = await apiRequest("POST", `/api/notes/${params.id}/comments`, {
+        fromPos: from,
+        toPos: to,
+        content,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notes", params.id, "comments"],
+      });
+      setNewCommentText("");
+      setIsCommentDialogOpen(false);
+      toast({ title: "Comment added" });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Failed to add comment",
+        description: e.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: async ({
+      threadId,
+      content,
+    }: {
+      threadId: string;
+      content: string;
+    }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/notes/${params.id}/comments/${threadId}`,
+        {
+          content,
+        },
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notes", params.id, "comments"],
+      });
+      setReplyTextByThread({});
+      toast({ title: "Reply added" });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Failed to add reply",
+        description: e.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const resolveThreadMutation = useMutation({
+    mutationFn: async (threadId: string) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/notes/${params.id}/comments/${threadId}`,
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notes", params.id, "comments"],
+      });
+      toast({ title: "Thread resolved" });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Failed to resolve thread",
+        description: e.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteThreadMutation = useMutation({
+    mutationFn: async (threadId: string) => {
+      const res = await apiRequest(
+        "DELETE",
+        `/api/notes/${params.id}/comments/${threadId}`,
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/notes", params.id, "comments"],
+      });
+      toast({ title: "Thread deleted" });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Failed to delete thread",
+        description: e.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleExport = async (format: string) => {
     try {
-      const response = await fetch(`/api/notes/${params.id}/export?format=${format}`, {
-        credentials: "include",
-      });
+      const response = await fetch(
+        `/api/notes/${params.id}/export?format=${format}`,
+        {
+          credentials: "include",
+        },
+      );
       if (!response.ok) throw new Error("Export failed");
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
       const disposition = response.headers.get("Content-Disposition");
-      const filename = disposition?.match(/filename="(.+)"/)?.[1] || `note.${format}`;
+      const filename =
+        disposition?.match(/filename="(.+)"/)?.[1] || `note.${format}`;
       a.download = filename;
       document.body.appendChild(a);
       a.click();
@@ -261,7 +467,13 @@ export default function NoteEditor() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-xl font-bold">
-            {isNew ? "New Note" : isOwner ? "Edit Note" : canEdit ? "Edit Note (Editor)" : "View Note"}
+            {isNew
+              ? "New Note"
+              : isOwner
+                ? "Edit Note"
+                : canEdit
+                  ? "Edit Note (Editor)"
+                  : "View Note"}
           </h1>
           {hasChanges && canEdit && (
             <Badge variant="outline" className="text-xs">
@@ -273,21 +485,34 @@ export default function NoteEditor() {
           {!isNew && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" data-testid="button-export-note">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-export-note"
+                >
                   <Download className="w-4 h-4 mr-1" />
                   Export
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handleExport("txt")} data-testid="button-export-txt">
+                <DropdownMenuItem
+                  onClick={() => handleExport("txt")}
+                  data-testid="button-export-txt"
+                >
                   <File className="w-4 h-4 mr-2" />
                   Plain Text (.txt)
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExport("md")} data-testid="button-export-md">
+                <DropdownMenuItem
+                  onClick={() => handleExport("md")}
+                  data-testid="button-export-md"
+                >
                   <FileCode className="w-4 h-4 mr-2" />
                   Markdown (.md)
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleExport("pdf")} data-testid="button-export-pdf">
+                <DropdownMenuItem
+                  onClick={() => handleExport("pdf")}
+                  data-testid="button-export-pdf"
+                >
                   <FileText className="w-4 h-4 mr-2" />
                   HTML Document (.html)
                 </DropdownMenuItem>
@@ -383,10 +608,162 @@ export default function NoteEditor() {
         }`}
       />
 
+      {canComment && selectionRange && !isNew && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Commenting on selected text.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsCommentDialogOpen(true)}
+            data-testid="button-add-inline-comment"
+          >
+            <MessageSquare className="w-4 h-4 mr-1" />
+            Comment selection
+          </Button>
+        </div>
+      )}
+
       <div className="border rounded-md" data-testid="editor-wrapper">
         {canEdit && <EditorToolbar editor={editor} />}
         <EditorContent editor={editor} />
       </div>
+
+      {!isNew && commentThreads && commentThreads.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold">Comments</h2>
+          <div className="space-y-2">
+            {commentThreads.map((thread) => (
+              <div
+                key={thread.id}
+                className="rounded-md border p-2 text-sm space-y-2"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="font-medium">
+                      {thread.comments[0]?.user.displayName ?? "Comment"}
+                    </span>
+                    <p className="text-xs text-muted-foreground">
+                      {thread.comments[0]?.content}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {thread.resolvedAt && (
+                      <Badge variant="outline" className="text-[10px]">
+                        Resolved
+                      </Badge>
+                    )}
+                    {isOwner && (
+                      <>
+                        {!thread.resolvedAt && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              resolveThreadMutation.mutate(thread.id)
+                            }
+                          >
+                            Resolve
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteThreadMutation.mutate(thread.id)}
+                        >
+                          Delete
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {thread.comments.slice(1).map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="pl-3 border-l text-xs text-muted-foreground"
+                  >
+                    <span className="font-medium">
+                      {comment.user.displayName}:
+                    </span>{" "}
+                    <span>{comment.content}</span>
+                  </div>
+                ))}
+
+                {canComment && !thread.resolvedAt && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Input
+                      placeholder="Reply..."
+                      value={replyTextByThread[thread.id] ?? ""}
+                      onChange={(e) =>
+                        setReplyTextByThread((prev) => ({
+                          ...prev,
+                          [thread.id]: e.target.value,
+                        }))
+                      }
+                      className="h-8 text-xs"
+                    />
+                    <Button
+                      size="sm"
+                      disabled={
+                        !replyTextByThread[thread.id]?.trim() ||
+                        replyMutation.isPending
+                      }
+                      onClick={() => {
+                        const content = replyTextByThread[thread.id]?.trim();
+                        if (!content) return;
+                        replyMutation.mutate({ threadId: thread.id, content });
+                      }}
+                    >
+                      Reply
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={isCommentDialogOpen} onOpenChange={setIsCommentDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add comment</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            value={newCommentText}
+            onChange={(e) => setNewCommentText(e.target.value)}
+            placeholder="Write your comment..."
+            rows={4}
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsCommentDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!selectionRange || !newCommentText.trim()) return;
+                createCommentMutation.mutate({
+                  from: selectionRange.from,
+                  to: selectionRange.to,
+                  content: newCommentText.trim(),
+                });
+              }}
+              disabled={
+                !selectionRange ||
+                !newCommentText.trim() ||
+                createCommentMutation.isPending
+              }
+            >
+              {createCommentMutation.isPending ? "Adding..." : "Add comment"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

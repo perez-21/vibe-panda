@@ -8,7 +8,7 @@ import type { Express } from "express";
 import { storage } from "./storage";
 import { pool } from "./db";
 import connectPgSimple from "connect-pg-simple";
-import type { User } from "@shared/schema";
+import type { User as SchemaUser } from "@shared/schema";
 
 const scryptAsync = promisify(scrypt);
 
@@ -27,7 +27,8 @@ export async function comparePasswords(supplied: string, stored: string): Promis
 
 declare global {
   namespace Express {
-    interface User extends import("@shared/schema").User {}
+    // Align Express's User type with our application user model
+    interface User extends SchemaUser {}
   }
 }
 
@@ -194,7 +195,7 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: User | false, info: any) => {
+    passport.authenticate("local", (err: any, user: SchemaUser | false, info: any) => {
       if (err) return next(err);
       if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
       req.login(user, (err) => {
