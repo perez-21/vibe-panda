@@ -1,5 +1,6 @@
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/lib/auth";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sidebar,
   SidebarContent,
@@ -9,10 +10,11 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuBadge,
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { Home, FileText, FolderOpen, Compass, Bookmark, LogOut, Plus, UserCircle } from "lucide-react";
+import { Home, FileText, FolderOpen, Compass, Bookmark, Bell, LogOut, Plus, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -22,12 +24,18 @@ const navItems = [
   { title: "My Modules", url: "/modules", icon: FolderOpen },
   { title: "Explore", url: "/explore", icon: Compass },
   { title: "Saved", url: "/saved", icon: Bookmark },
+  { title: "Notifications", url: "/notifications", icon: Bell },
   { title: "Profile", url: "/profile", icon: UserCircle },
 ];
 
 export function AppSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/notifications/unread-count"],
+    refetchInterval: 30000,
+  });
 
   const getInitials = (name: string) => {
     return name
@@ -69,6 +77,7 @@ export function AppSidebar() {
               {navItems.map((item) => {
                 const isActive = location === item.url ||
                   (item.url !== "/" && location.startsWith(item.url));
+                const unreadCount = item.title === "Notifications" ? (unreadData?.count ?? 0) : 0;
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild data-active={isActive}>
@@ -77,6 +86,11 @@ export function AppSidebar() {
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
+                    {unreadCount > 0 && (
+                      <SidebarMenuBadge data-testid="badge-unread-notifications">
+                        {unreadCount}
+                      </SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
                 );
               })}

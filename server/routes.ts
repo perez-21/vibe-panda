@@ -7,6 +7,7 @@ import { z } from "zod";
 import TurndownService from "turndown";
 import { db } from "./db";
 import { eq, and, inArray } from "drizzle-orm";
+import { notifyNoteShared, notifyModuleShared, notifyNoteEdited, notifyCommentAdded, notifyCommentReply } from "./notifications";
 
 const turndown = new TurndownService();
 
@@ -111,6 +112,9 @@ export async function registerRoutes(
     if (Array.isArray(commentPositions) && commentPositions.length > 0) {
       await storage.updateCommentThreadPositions(req.params.id, commentPositions);
     }
+    if (content !== undefined) {
+      notifyNoteEdited(req.user!.id, req.user!.displayName, note.id, note.title, note.ownerId).catch((e) => console.error("[notifications] note_edited:", e));
+    }
     res.json(updated);
   });
 
@@ -211,6 +215,7 @@ export async function registerRoutes(
       if (existingRole) return res.status(400).json({ message: "User is already a collaborator" });
 
       const collab = await storage.addCollaborator({ noteId: req.params.id, userId: targetUser.id, role });
+      notifyNoteShared(req.user!.id, req.user!.displayName, targetUser.id, note.id, note.title, role).catch((e) => console.error("[notifications] note_shared:", e));
       res.status(201).json(collab);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -365,6 +370,7 @@ export async function registerRoutes(
       if (existingRole) return res.status(400).json({ message: "User is already a collaborator" });
 
       const collab = await storage.addCollaborator({ moduleId: req.params.id, userId: targetUser.id, role });
+      notifyModuleShared(req.user!.id, req.user!.displayName, targetUser.id, mod.id, mod.title, role).catch((e) => console.error("[notifications] module_shared:", e));
       res.status(201).json(collab);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -451,6 +457,7 @@ export async function registerRoutes(
       }
 
       await storage.createCommentThread(note.id, fromPos, toPos, req.user!.id, content);
+      notifyCommentAdded(req.user!.id, req.user!.displayName, note.id, note.title, note.ownerId).catch((e) => console.error("[notifications] comment_added:", e));
       const threads = await storage.getCommentThreads(note.id);
       res.status(201).json(threads);
     } catch (err: any) {
@@ -478,7 +485,14 @@ export async function registerRoutes(
       });
 
       const { content } = bodySchema.parse(req.body);
+      const existingThreads = await storage.getCommentThreads(note.id);
+      const targetThread = existingThreads.find((t) => t.id === req.params.threadId);
+      if (!targetThread) {
+        return res.status(404).json({ message: "Comment thread not found on this note" });
+      }
       await storage.addComment(req.params.threadId, req.user!.id, content);
+      const uniqueParticipants = [...new Set(targetThread.comments.map((c: any) => c.userId).filter(Boolean))];
+      notifyCommentReply(req.user!.id, req.user!.displayName, note.id, note.title, note.ownerId, uniqueParticipants as string[]).catch((e) => console.error("[notifications] comment_reply:", e));
       const threads = await storage.getCommentThreads(note.id);
       res.status(201).json(threads);
     } catch (err: any) {
@@ -498,6 +512,11 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only the note owner can resolve comments" });
     }
 
+    const existingThreads = await storage.getCommentThreads(note.id);
+    if (!existingThreads.some((t) => t.id === req.params.threadId)) {
+      return res.status(404).json({ message: "Comment thread not found on this note" });
+    }
+
     const thread = await storage.resolveCommentThread(req.params.threadId);
     if (!thread) return res.status(404).json({ message: "Comment thread not found" });
 
@@ -512,6 +531,11 @@ export async function registerRoutes(
     const isOwner = note.ownerId === req.user!.id;
     if (!isOwner) {
       return res.status(403).json({ message: "Only the note owner can delete comments" });
+    }
+
+    const existingThreads = await storage.getCommentThreads(note.id);
+    if (!existingThreads.some((t) => t.id === req.params.threadId)) {
+      return res.status(404).json({ message: "Comment thread not found on this note" });
     }
 
     const deleted = await storage.deleteCommentThread(req.params.threadId);
@@ -573,6 +597,27 @@ export async function registerRoutes(
     const deleted = await storage.removeSavedItem(req.params.id, req.user!.id);
     if (!deleted) return res.status(404).json({ message: "Item not found" });
     res.json({ message: "Removed" });
+  });
+
+  app.get("/api/notifications", requireAuth, async (req, res) => {
+    const notifs = await storage.getNotifications(req.user!.id);
+    res.json(notifs);
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
+    const count = await storage.getUnreadNotificationCount(req.user!.id);
+    res.json({ count });
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
+    const updated = await storage.markNotificationAsRead(req.params.id, req.user!.id);
+    if (!updated) return res.status(404).json({ message: "Notification not found" });
+    res.json({ message: "Marked as read" });
+  });
+
+  app.post("/api/notifications/read-all", requireAuth, async (req, res) => {
+    await storage.markAllNotificationsAsRead(req.user!.id);
+    res.json({ message: "All notifications marked as read" });
   });
 
   return httpServer;

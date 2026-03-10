@@ -1,11 +1,12 @@
 import { eq, and, or, ilike, desc, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, notes, modules, moduleItems, savedItems, collaborators, commentThreads, comments,
+  users, notes, modules, moduleItems, savedItems, collaborators, commentThreads, comments, notifications,
   type User, type InsertUser, type Note, type InsertNote,
   type Module, type InsertModule, type ModuleItem, type InsertModuleItem,
   type SavedItem, type InsertSavedItem, type Collaborator, type InsertCollaborator,
   type CommentThread, type Comment,
+  type Notification, type InsertNotification,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -51,6 +52,12 @@ export interface IStorage {
   resolveCommentThread(threadId: string): Promise<CommentThread | undefined>;
   deleteCommentThread(threadId: string): Promise<boolean>;
   updateCommentThreadPositions(noteId: string, updates: { threadId: string; fromPos: number; toPos: number }[]): Promise<void>;
+
+  createNotification(data: InsertNotification): Promise<Notification>;
+  getNotifications(userId: string): Promise<(Notification & { actor: { displayName: string; username: string; avatar: string | null } })[]>;
+  getUnreadNotificationCount(userId: string): Promise<number>;
+  markNotificationAsRead(id: string, userId: string): Promise<boolean>;
+  markAllNotificationsAsRead(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -612,6 +619,78 @@ export class DatabaseStorage implements IStorage {
           .where(and(eq(commentThreads.id, u.threadId), eq(commentThreads.noteId, noteId))),
       ),
     );
+  }
+  async createNotification(data: InsertNotification): Promise<Notification> {
+    const [notification] = await db.insert(notifications).values(data).returning();
+    return notification;
+  }
+
+  async getNotifications(userId: string): Promise<(Notification & { actor: { displayName: string; username: string; avatar: string | null } })[]> {
+    const rows = await db
+      .select({
+        id: notifications.id,
+        userId: notifications.userId,
+        actorId: notifications.actorId,
+        type: notifications.type,
+        title: notifications.title,
+        message: notifications.message,
+        link: notifications.link,
+        isRead: notifications.isRead,
+        noteId: notifications.noteId,
+        moduleId: notifications.moduleId,
+        createdAt: notifications.createdAt,
+        actorDisplayName: users.displayName,
+        actorUsername: users.username,
+        actorAvatar: users.avatar,
+      })
+      .from(notifications)
+      .leftJoin(users, eq(notifications.actorId, users.id))
+      .where(eq(notifications.userId, userId))
+      .orderBy(desc(notifications.createdAt))
+      .limit(50);
+
+    return rows.map((r) => ({
+      id: r.id,
+      userId: r.userId,
+      actorId: r.actorId,
+      type: r.type,
+      title: r.title,
+      message: r.message,
+      link: r.link,
+      isRead: r.isRead,
+      noteId: r.noteId,
+      moduleId: r.moduleId,
+      createdAt: r.createdAt,
+      actor: {
+        displayName: r.actorDisplayName ?? "Unknown",
+        username: r.actorUsername ?? "unknown",
+        avatar: r.actorAvatar ?? null,
+      },
+    }));
+  }
+
+  async getUnreadNotificationCount(userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    return result?.count ?? 0;
+  }
+
+  async markNotificationAsRead(id: string, userId: string): Promise<boolean> {
+    const [updated] = await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+      .returning();
+    return !!updated;
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    await db
+      .update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
   }
 }
 

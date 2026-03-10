@@ -50,6 +50,7 @@ shared/
 - **collaborators**: id, noteId, moduleId, userId, role
 - **comment_threads**: id, noteId, fromPos, toPos, resolvedAt, createdAt
 - **comments**: id, threadId, userId, content, createdAt
+- **notifications**: id, userId, actorId, type, title, message, link, isRead, noteId, moduleId, createdAt
 
 ## API Endpoints
 - `POST /api/auth/register` - Register new user
@@ -82,6 +83,10 @@ shared/
 - `GET /api/explore/categories` - Distinct category labels from public modules
 - `GET/POST /api/saved` - List/save items
 - `DELETE /api/saved/:id` - Remove saved item
+- `GET /api/notifications` - List user's notifications (with actor info)
+- `GET /api/notifications/unread-count` - Unread notification count
+- `PATCH /api/notifications/:id/read` - Mark notification as read
+- `POST /api/notifications/read-all` - Mark all notifications as read
 
 ## Features Added (Tier 1)
 - **Note Export**: Export notes as .txt, .md, or .html via dropdown in note editor
@@ -89,6 +94,7 @@ shared/
 - **Server-side Search**: ILIKE search on explore page with category filter dropdown
 - **Google OAuth**: Conditional Google sign-in button (shown when env vars configured); googleId column on users table
 - **Rich Text**: Tiptap editor with toolbar, HTML content storage, backward-compatible plain text loading
+- **Notifications**: In-app notifications for note sharing, module sharing, note edits, comments, and replies; sidebar badge with unread count (polls every 30s); notifications page with mark-as-read and mark-all-as-read
 - **User Profile**: Profile page at /profile with avatar upload (base64), display name editing
 - **Image Embeds**: Insert images via URL in the editor toolbar
 - **LaTeX/Math**: Inline and block math via custom Tiptap nodes with KaTeX rendering
