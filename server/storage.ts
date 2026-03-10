@@ -1,10 +1,11 @@
-import { eq, and, or, ilike, desc, sql, ne } from "drizzle-orm";
+import { eq, and, or, ilike, desc, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, notes, modules, moduleItems, savedItems, collaborators,
+  users, notes, modules, moduleItems, savedItems, collaborators, commentThreads, comments,
   type User, type InsertUser, type Note, type InsertNote,
   type Module, type InsertModule, type ModuleItem, type InsertModuleItem,
   type SavedItem, type InsertSavedItem, type Collaborator, type InsertCollaborator,
+  type CommentThread, type Comment,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -43,6 +44,13 @@ export interface IStorage {
   removeCollaborator(id: string, noteId?: string, moduleId?: string): Promise<boolean>;
   getCollaboratorRole(noteId: string | undefined, moduleId: string | undefined, userId: string): Promise<string | null>;
   getAllCategoryLabels(): Promise<string[]>;
+
+  getCommentThreads(noteId: string): Promise<(CommentThread & { comments: (Comment & { user: { displayName: string; email: string; username: string } })[] })[]>;
+  createCommentThread(noteId: string, fromPos: number, toPos: number, userId: string, content: string): Promise<CommentThread>;
+  addComment(threadId: string, userId: string, content: string): Promise<Comment>;
+  resolveCommentThread(threadId: string): Promise<CommentThread | undefined>;
+  deleteCommentThread(threadId: string): Promise<boolean>;
+  updateCommentThreadPositions(noteId: string, updates: { threadId: string; fromPos: number; toPos: number }[]): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -496,6 +504,114 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return Array.from(allLabels).sort();
+  }
+
+  async getCommentThreads(noteId: string): Promise<(CommentThread & { comments: (Comment & { user: { displayName: string; email: string; username: string } })[] })[]> {
+    const threads = await db
+      .select()
+      .from(commentThreads)
+      .where(eq(commentThreads.noteId, noteId))
+      .orderBy(commentThreads.createdAt);
+
+    if (threads.length === 0) return [];
+
+    const threadIds = threads.map((t) => t.id);
+
+    const rawComments = await db
+      .select({
+        id: comments.id,
+        threadId: comments.threadId,
+        userId: comments.userId,
+        content: comments.content,
+        createdAt: comments.createdAt,
+        userDisplayName: users.displayName,
+        userEmail: users.email,
+        userUsername: users.username,
+      })
+      .from(comments)
+      .innerJoin(users, eq(comments.userId, users.id))
+      .where(inArray(comments.threadId, threadIds))
+      .orderBy(comments.createdAt);
+
+    const grouped = new Map<string, (Comment & { user: { displayName: string; email: string; username: string } })[]>();
+    for (const c of rawComments) {
+      const existing = grouped.get(c.threadId) ?? [];
+      existing.push({
+        id: c.id,
+        threadId: c.threadId,
+        userId: c.userId,
+        content: c.content,
+        createdAt: c.createdAt,
+        user: {
+          displayName: c.userDisplayName,
+          email: c.userEmail,
+          username: c.userUsername,
+        },
+      } as any);
+      grouped.set(c.threadId, existing);
+    }
+
+    return threads.map((t) => ({
+      ...t,
+      comments: grouped.get(t.id) ?? [],
+    }));
+  }
+
+  async createCommentThread(noteId: string, fromPos: number, toPos: number, userId: string, content: string): Promise<CommentThread> {
+    const [thread] = await db
+      .insert(commentThreads)
+      .values({
+        noteId,
+        fromPos,
+        toPos,
+      })
+      .returning();
+
+    await db.insert(comments).values({
+      threadId: thread.id,
+      userId,
+      content,
+    });
+
+    return thread;
+  }
+
+  async addComment(threadId: string, userId: string, content: string): Promise<Comment> {
+    const [comment] = await db
+      .insert(comments)
+      .values({
+        threadId,
+        userId,
+        content,
+      })
+      .returning();
+    return comment;
+  }
+
+  async resolveCommentThread(threadId: string): Promise<CommentThread | undefined> {
+    const [thread] = await db
+      .update(commentThreads)
+      .set({ resolvedAt: new Date() })
+      .where(eq(commentThreads.id, threadId))
+      .returning();
+    return thread;
+  }
+
+  async deleteCommentThread(threadId: string): Promise<boolean> {
+    const result = await db.delete(commentThreads).where(eq(commentThreads.id, threadId)).returning();
+    return result.length > 0;
+  }
+
+  async updateCommentThreadPositions(noteId: string, updates: { threadId: string; fromPos: number; toPos: number }[]): Promise<void> {
+    if (!updates || updates.length === 0) return;
+    await Promise.all(
+      updates.map((u) =>
+        db
+          .update(commentThreads)
+          .set({ fromPos: u.fromPos, toPos: u.toPos })
+          .where(and(eq(commentThreads.id, u.threadId), eq(commentThreads.noteId, noteId))),
+      ),
+    );
   }
 }
 
