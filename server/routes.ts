@@ -260,6 +260,13 @@ export async function registerRoutes(
     }
 
     const { title, description, isPublic, categoryLabels } = req.body;
+    if (isPublic === true && !mod.isPublic) {
+      const moduleData = await storage.getModule(req.params.id, req.user!.id);
+      const hasPrivateNotes = moduleData?.notes?.some((n: any) => !n.isPublic);
+      if (hasPrivateNotes) {
+        return res.status(400).json({ message: "Cannot make module public while it contains private notes. Remove private notes first." });
+      }
+    }
     const updated = await storage.updateModule(req.params.id, mod.ownerId, { title, description, isPublic, categoryLabels });
     if (!updated) return res.status(404).json({ message: "Update failed" });
     res.json(updated);
@@ -286,8 +293,12 @@ export async function registerRoutes(
       if (!noteId) return res.status(400).json({ message: "noteId is required" });
       const note = await storage.getNote(noteId);
       if (!note) return res.status(404).json({ message: "Note not found" });
-      if (note.ownerId !== req.user!.id) {
-        return res.status(403).json({ message: "You can only add your own notes to modules" });
+
+      const isNoteOwner = note.ownerId === req.user!.id;
+      const noteCollabRole = !isNoteOwner ? await storage.getCollaboratorRole(noteId, undefined, req.user!.id) : null;
+      const canAccessNote = isNoteOwner || note.isPublic || !!noteCollabRole;
+      if (!canAccessNote) {
+        return res.status(403).json({ message: "You don't have access to this note" });
       }
       if (mod.isPublic && !note.isPublic) {
         return res.status(400).json({ message: "Cannot add a private note to a public module" });
@@ -357,6 +368,15 @@ export async function registerRoutes(
     const removed = await storage.removeCollaborator(req.params.collabId, undefined, req.params.id);
     if (!removed) return res.status(404).json({ message: "Collaborator not found" });
     res.json({ message: "Removed" });
+  });
+
+  app.get("/api/notes/search/accessible", requireAuth, async (req, res) => {
+    const q = req.query.q as string | undefined;
+    if (!q || q.trim().length === 0) {
+      return res.json([]);
+    }
+    const results = await storage.searchAccessibleNotes(req.user!.id, q.trim());
+    res.json(results);
   });
 
   app.get("/api/explore/notes", requireAuth, async (req, res) => {

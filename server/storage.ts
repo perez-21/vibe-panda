@@ -22,6 +22,7 @@ export interface IStorage {
   deleteNote(id: string, ownerId: string): Promise<boolean>;
   forkNote(noteId: string, userId: string): Promise<Note>;
   getPublicNotes(query?: string): Promise<(Note & { owner: { displayName: string; username: string } })[]>;
+  searchAccessibleNotes(userId: string, query: string): Promise<(Note & { owner: { displayName: string; username: string } })[]>;
 
   createModule(ownerId: string, data: InsertModule): Promise<Module>;
   getModule(id: string, requesterId?: string): Promise<any>;
@@ -142,6 +143,47 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(users, eq(notes.ownerId, users.id))
       .where(and(...conditions))
       .orderBy(desc(notes.updatedAt));
+
+    return result.map((r) => ({
+      id: r.id,
+      title: r.title,
+      content: r.content,
+      ownerId: r.ownerId,
+      isPublic: r.isPublic,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      forkedFromId: r.forkedFromId,
+      owner: { displayName: r.ownerDisplayName, username: r.ownerUsername },
+    }));
+  }
+
+  async searchAccessibleNotes(userId: string, query: string): Promise<(Note & { owner: { displayName: string; username: string } })[]> {
+    const pattern = `%${query}%`;
+    const searchCondition = or(ilike(notes.title, pattern), ilike(notes.content, pattern))!;
+    const accessCondition = or(
+      eq(notes.ownerId, userId),
+      eq(notes.isPublic, true),
+      sql`${notes.id} IN (SELECT ${collaborators.noteId} FROM ${collaborators} WHERE ${collaborators.userId} = ${userId} AND ${collaborators.noteId} IS NOT NULL)`
+    )!;
+
+    const result = await db
+      .select({
+        id: notes.id,
+        title: notes.title,
+        content: notes.content,
+        ownerId: notes.ownerId,
+        isPublic: notes.isPublic,
+        createdAt: notes.createdAt,
+        updatedAt: notes.updatedAt,
+        forkedFromId: notes.forkedFromId,
+        ownerDisplayName: users.displayName,
+        ownerUsername: users.username,
+      })
+      .from(notes)
+      .innerJoin(users, eq(notes.ownerId, users.id))
+      .where(and(searchCondition, accessCondition))
+      .orderBy(desc(notes.updatedAt))
+      .limit(20);
 
     return result.map((r) => ({
       id: r.id,
