@@ -1,0 +1,86 @@
+{
+  "colorScheme": "dark",
+  "fonts": [
+    {
+      "family": "IBM Plex Sans",
+      "count": 7
+    },
+    {
+      "family": "sans",
+      "count": 7
+    }
+  ],
+  "colors": {
+    "primary": "#0E1628",
+    "accent": "#1C2333",
+    "background": "#1A1A1A",
+    "textPrimary": "#1C2333",
+    "link": "#1C2333"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "IBM Plex Sans",
+      "heading": "IBM Plex Sans"
+    },
+    "fontStacks": {
+      "body": [
+        "IBM Plex Sans",
+        "sans"
+      ],
+      "heading": [
+        "IBM Plex Sans",
+        "sans"
+      ],
+      "paragraph": [
+        "IBM Plex Sans",
+        "sans"
+      ]
+    },
+    "fontSizes": {
+      "h1": "24px",
+      "h2": "15px",
+      "body": "16px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "0px"
+  },
+  "components": {},
+  "images": {
+    "logo": null,
+    "favicon": null,
+    "ogImage": null
+  },
+  "personality": {
+    "tone": "professional",
+    "energy": "medium",
+    "targetAudience": "unknown"
+  },
+  "designSystem": {
+    "framework": "unknown",
+    "componentLibrary": ""
+  },
+  "confidence": {
+    "buttons": 0,
+    "colors": 0,
+    "overall": 0
+  },
+  "__llm_metadata": {
+    "logoSelection": {
+      "llmCalled": false,
+      "llmSucceeded": false,
+      "finalSource": "none",
+      "rawLogoSelection": {
+        "selectedLogoIndex": -1,
+        "selectedLogoReasoning": "LLM failed",
+        "confidence": 0
+      }
+    },
+    "buttonClassification": {
+      "llmCalled": false,
+      "llmSucceeded": false,
+      "error": "LLM call failed or returned fallback values"
+    }
+  }
+}
