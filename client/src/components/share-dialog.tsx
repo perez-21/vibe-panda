@@ -89,6 +89,7 @@ export function ShareDialog({ resourceType, resourceId }: ShareDialogProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="viewer">Viewer</SelectItem>
+                <SelectItem value="commenter">Commenter</SelectItem>
                 <SelectItem value="editor">Editor</SelectItem>
               </SelectContent>
             </Select>

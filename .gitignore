@@ -4,3 +4,5 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+.env
+Notepanda_PRD_v1.1.md

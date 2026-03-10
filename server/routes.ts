@@ -61,9 +61,17 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Access denied" });
     }
 
-    const { title, content, isPublic } = req.body;
+    const { title, content, isPublic, commentPositions } = req.body as {
+      title?: string;
+      content?: string;
+      isPublic?: boolean;
+      commentPositions?: { threadId: string; fromPos: number; toPos: number }[];
+    };
     const updated = await storage.updateNote(req.params.id, note.ownerId, { title, content, isPublic });
     if (!updated) return res.status(404).json({ message: "Update failed" });
+    if (Array.isArray(commentPositions) && commentPositions.length > 0) {
+      await storage.updateCommentThreadPositions(req.params.id, commentPositions);
+    }
     res.json(updated);
   });
 
@@ -153,7 +161,7 @@ export async function registerRoutes(
       }
       const { email, role } = req.body;
       if (!email || !role) return res.status(400).json({ message: "email and role are required" });
-      if (!["viewer", "editor"].includes(role)) return res.status(400).json({ message: "Role must be viewer or editor" });
+      if (!["viewer", "commenter", "editor"].includes(role)) return res.status(400).json({ message: "Role must be viewer, commenter, or editor" });
 
       const targetUser = await storage.getUserByEmail(email);
       if (!targetUser) return res.status(404).json({ message: "No user found with that email" });
@@ -295,7 +303,7 @@ export async function registerRoutes(
       }
       const { email, role } = req.body;
       if (!email || !role) return res.status(400).json({ message: "email and role are required" });
-      if (!["viewer", "editor"].includes(role)) return res.status(400).json({ message: "Role must be viewer or editor" });
+      if (!["viewer", "commenter", "editor"].includes(role)) return res.status(400).json({ message: "Role must be viewer, commenter, or editor" });
 
       const targetUser = await storage.getUserByEmail(email);
       if (!targetUser) return res.status(404).json({ message: "No user found with that email" });
@@ -320,6 +328,115 @@ export async function registerRoutes(
     const removed = await storage.removeCollaborator(req.params.collabId, undefined, req.params.id);
     if (!removed) return res.status(404).json({ message: "Collaborator not found" });
     res.json({ message: "Removed" });
+  });
+
+  app.get("/api/notes/:id/comments", requireAuth, async (req, res) => {
+    const note = await storage.getNote(req.params.id);
+    if (!note) return res.status(404).json({ message: "Note not found" });
+
+    const isOwner = note.ownerId === req.user!.id;
+    const collabRole = !isOwner ? await storage.getCollaboratorRole(req.params.id, undefined, req.user!.id) : null;
+
+    if (!isOwner && !note.isPublic && !collabRole) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const threads = await storage.getCommentThreads(req.params.id);
+    res.json(threads);
+  });
+
+  app.post("/api/notes/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) return res.status(404).json({ message: "Note not found" });
+
+      const isOwner = note.ownerId === req.user!.id;
+      const collabRole = !isOwner ? await storage.getCollaboratorRole(req.params.id, undefined, req.user!.id) : null;
+
+      if (!isOwner && collabRole !== "editor" && collabRole !== "commenter") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const bodySchema = z.object({
+        fromPos: z.number().int().nonnegative(),
+        toPos: z.number().int().nonnegative(),
+        content: z.string().min(1).max(2000),
+      });
+
+      const { fromPos, toPos, content } = bodySchema.parse(req.body);
+      if (toPos <= fromPos) {
+        return res.status(400).json({ message: "toPos must be greater than fromPos" });
+      }
+
+      await storage.createCommentThread(note.id, fromPos, toPos, req.user!.id, content);
+      const threads = await storage.getCommentThreads(note.id);
+      res.status(201).json(threads);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Invalid data" });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/notes/:id/comments/:threadId", requireAuth, async (req, res) => {
+    try {
+      const note = await storage.getNote(req.params.id);
+      if (!note) return res.status(404).json({ message: "Note not found" });
+
+      const isOwner = note.ownerId === req.user!.id;
+      const collabRole = !isOwner ? await storage.getCollaboratorRole(req.params.id, undefined, req.user!.id) : null;
+
+      if (!isOwner && collabRole !== "editor" && collabRole !== "commenter") {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const bodySchema = z.object({
+        content: z.string().min(1).max(2000),
+      });
+
+      const { content } = bodySchema.parse(req.body);
+      await storage.addComment(req.params.threadId, req.user!.id, content);
+      const threads = await storage.getCommentThreads(note.id);
+      res.status(201).json(threads);
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0]?.message || "Invalid data" });
+      }
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/notes/:id/comments/:threadId", requireAuth, async (req, res) => {
+    const note = await storage.getNote(req.params.id);
+    if (!note) return res.status(404).json({ message: "Note not found" });
+
+    const isOwner = note.ownerId === req.user!.id;
+    if (!isOwner) {
+      return res.status(403).json({ message: "Only the note owner can resolve comments" });
+    }
+
+    const thread = await storage.resolveCommentThread(req.params.threadId);
+    if (!thread) return res.status(404).json({ message: "Comment thread not found" });
+
+    const threads = await storage.getCommentThreads(note.id);
+    res.json(threads);
+  });
+
+  app.delete("/api/notes/:id/comments/:threadId", requireAuth, async (req, res) => {
+    const note = await storage.getNote(req.params.id);
+    if (!note) return res.status(404).json({ message: "Note not found" });
+
+    const isOwner = note.ownerId === req.user!.id;
+    if (!isOwner) {
+      return res.status(403).json({ message: "Only the note owner can delete comments" });
+    }
+
+    const deleted = await storage.deleteCommentThread(req.params.threadId);
+    if (!deleted) return res.status(404).json({ message: "Comment thread not found" });
+
+    const threads = await storage.getCommentThreads(note.id);
+    res.json(threads);
   });
 
   app.get("/api/explore/notes", requireAuth, async (req, res) => {

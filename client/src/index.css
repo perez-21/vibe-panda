@@ -316,3 +316,8 @@
   background: hsl(var(--muted));
   font-weight: 600;
 }
+
+.tiptap .comment-highlight {
+  background-color: rgba(251, 191, 36, 0.35);
+  border-radius: 2px;
+}

@@ -37,7 +37,16 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
 
   if (!editor) return null;
 
-  const tools = [
+  type ToolbarItem = {
+    icon: React.ComponentType<{ className?: string }>;
+    action: () => void;
+    active: boolean;
+    testId: string;
+    title: string;
+    disabled?: boolean;
+  };
+
+  const tools: { group: string; items: ToolbarItem[] }[] = [
     {
       group: "history",
       items: [
@@ -184,7 +193,7 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
               size="icon"
               variant="ghost"
               onClick={tool.action}
-              disabled={tool.disabled}
+              disabled={tool.disabled ?? false}
               className={`h-8 w-8 ${tool.active ? "bg-accent text-accent-foreground" : ""}`}
               data-testid={tool.testId}
               title={tool.title}
