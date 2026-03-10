@@ -116,6 +116,29 @@ shared/
 - Math nodes use KaTeX for rendering; store LaTeX in `data-latex` attribute; interactive editing via NodeView
 - Packages: @tiptap/react, @tiptap/starter-kit, @tiptap/pm, @tiptap/extension-underline, @tiptap/extension-table, @tiptap/extension-table-row, @tiptap/extension-table-cell, @tiptap/extension-table-header, @tiptap/extension-placeholder, @tiptap/extension-image, katex
 
+## Real-Time Collaboration
+- **Architecture**: Yjs CRDT + WebSocket for real-time collaborative editing
+- **Server**: `server/websocket.ts` — WebSocket server with room management, session-based auth, Yjs sync protocol relay
+  - Rooms: in-memory Y.Doc per note, created on first connection, destroyed when empty
+  - Auth: reuses Express session middleware via cookie parsing on upgrade; verifies user is owner or editor
+  - Sync: relays Yjs sync messages between clients; server Y.Doc acts as central state
+  - Awareness: relays awareness updates (cursors, user presence) between clients; tracks client IDs per connection for cleanup
+  - Close codes: 4403 (forbidden), 4004 (not found) — client won't reconnect on these
+- **Client Provider**: `client/src/lib/collaboration.ts` — CollaborationProvider class
+  - Creates Y.Doc + Awareness, connects WebSocket, handles Yjs sync protocol
+  - Auto-reconnect with exponential backoff (1s → 30s max)
+  - Events: `synced`, `disconnected`, `awareness`
+- **Editor Integration**: `client/src/pages/note-editor.tsx`
+  - ySyncPlugin + yCursorPlugin registered/unregistered dynamically via useEffect
+  - Collab only activated for editors (canEdit), not viewers/commenters
+  - New notes use manual save; existing notes use collab with auto-save every 10s
+  - Presence indicators: avatar pills with tooltips, collaborator count
+  - "Auto-saving" badge when connected; "Unsaved changes" when offline
+  - Reconnecting banner on disconnect
+  - Browser tab visibility: pauses awareness when tab is hidden
+- **Cursor Styles**: `.yRemoteSelection`, `.yRemoteSelectionHead` CSS in index.css
+- **Packages**: yjs, y-prosemirror, y-protocols, lib0
+
 ## Seed Data
 - 3 sample users (mary@university.edu, alex@university.edu, sarah@university.edu) - password: password123
 - 6 notes (5 public, 1 private) covering CS, Math, OS, and DB topics

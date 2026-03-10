@@ -36,26 +36,26 @@ declare global {
   }
 }
 
-export function setupAuth(app: Express) {
-  const PgStore = connectPgSimple(session);
+const PgStore = connectPgSimple(session);
 
-  app.use(
-    session({
-      store: new PgStore({
-        pool,
-        createTableIfMissing: true,
-      }),
-      secret: config.SESSION_SECRET || "notepanda-dev-secret",
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        maxAge: 30 * 24 * 60 * 60 * 1000,
-        httpOnly: true,
-        secure: false,
-        sameSite: "lax",
-      },
-    }),
-  );
+export const sessionMiddleware = session({
+  store: new PgStore({
+    pool,
+    createTableIfMissing: true,
+  }),
+  secret: config.SESSION_SECRET || "notepanda-dev-secret",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+    secure: false,
+    sameSite: "lax",
+  },
+});
+
+export function setupAuth(app: Express) {
+  app.use(sessionMiddleware);
 
   app.use(passport.initialize());
   app.use(passport.session());

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
@@ -14,12 +14,20 @@ import { Placeholder } from "@tiptap/extension-placeholder";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import { Image as ImageExt } from "@tiptap/extension-image";
+// @ts-ignore
+import { ySyncPlugin, ySyncPluginKey, yCursorPlugin, yCursorPluginKey } from "y-prosemirror";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +47,10 @@ import {
   FileCode,
   File,
   MessageSquare,
+  Wifi,
+  WifiOff,
+  Users,
+  Loader2,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -61,6 +73,7 @@ import {
   getCommentPositions,
   type CommentThreadSummary,
 } from "@/extensions/comment-decoration";
+import { CollaborationProvider } from "@/lib/collaboration";
 
 function MathNodeView({ node, updateAttributes, selected }: any) {
   const [editing, setEditing] = useState(false);
@@ -230,6 +243,26 @@ type NoteCommentThread = CommentThreadSummary & {
   }[];
 };
 
+interface CollabUser {
+  name: string;
+  id: string;
+  color: string;
+}
+
+const USER_COLORS = [
+  "#FF6B6B", "#4ECDC4", "#45B7D1", "#96CEB4",
+  "#FFEAA7", "#DDA0DD", "#98D8C8", "#F7DC6F",
+  "#BB8FCE", "#85C1E9",
+];
+
+function getUserColor(userId: string): string {
+  let hash = 0;
+  for (let i = 0; i < userId.length; i++) {
+    hash = ((hash << 5) - hash + userId.charCodeAt(i)) | 0;
+  }
+  return USER_COLORS[Math.abs(hash) % USER_COLORS.length];
+}
+
 export default function NoteEditor() {
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
@@ -251,10 +284,22 @@ export default function NoteEditor() {
     Record<string, string>
   >({});
 
+  const [collabConnected, setCollabConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [collaborators, setCollaborators] = useState<CollabUser[]>([]);
+  const providerRef = useRef<CollaborationProvider | null>(null);
+  const wasConnectedRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const collabRef = useRef(false);
+  collabRef.current = collabConnected;
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
+        history: false,
       }),
       UnderlineExt,
       TableExt.configure({ resizable: false }),
@@ -281,9 +326,93 @@ export default function NoteEditor() {
       },
     },
     onUpdate: () => {
-      setHasChanges(true);
+      if (collabRef.current) {
+        dirtyRef.current = true;
+      } else {
+        setHasChanges(true);
+      }
     },
   });
+
+  useEffect(() => {
+    if (!editor || !collabConnected || !providerRef.current) return;
+
+    const provider = providerRef.current;
+    const yXmlFragment = provider.doc.getXmlFragment("prosemirror");
+    const awareness = provider.awareness;
+
+    try {
+      editor.registerPlugin(ySyncPlugin(yXmlFragment));
+      editor.registerPlugin(yCursorPlugin(awareness));
+    } catch (err) {
+      console.error("[collab] Failed to register plugins:", err);
+      return;
+    }
+
+    return () => {
+      try {
+        editor.unregisterPlugin(ySyncPluginKey);
+        editor.unregisterPlugin(yCursorPluginKey);
+      } catch {}
+    };
+  }, [editor, collabConnected]);
+
+  useEffect(() => {
+    if (collabConnected && providerRef.current && user) {
+      providerRef.current.setAwarenessUser({
+        name: user.displayName,
+        id: user.id,
+        color: getUserColor(user.id),
+      });
+    }
+  }, [collabConnected, user]);
+
+  useEffect(() => {
+    if (!collabConnected || !providerRef.current || !user) return;
+    const provider = providerRef.current;
+    const handleVisibility = () => {
+      if (document.hidden) {
+        provider.awareness.setLocalStateField("user", null);
+      } else {
+        provider.setAwarenessUser({
+          name: user.displayName,
+          id: user.id,
+          color: getUserColor(user.id),
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [collabConnected, user]);
+
+  useEffect(() => {
+    if (!collabConnected || !editor || isNew || !params.id) {
+      if (autoSaveTimerRef.current) {
+        clearInterval(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      return;
+    }
+
+    autoSaveTimerRef.current = setInterval(() => {
+      if (dirtyRef.current && editor) {
+        dirtyRef.current = false;
+        const content = editor.getHTML();
+        const commentPositions = getCommentPositions(editor);
+        apiRequest("PATCH", `/api/notes/${params.id}`, {
+          content,
+          commentPositions,
+        }).catch((err) => console.error("[collab] Auto-save failed:", err));
+      }
+    }, 10000);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearInterval(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [collabConnected, editor, params.id, isNew]);
 
   useEffect(() => {
     if (isNew) {
@@ -316,6 +445,48 @@ export default function NoteEditor() {
     queryKey: ["/api/notes", params.id, "comments"],
     enabled: !isNew,
   });
+
+  useEffect(() => {
+    if (isNew || !params.id || !canEdit) return;
+
+    const provider = new CollaborationProvider(params.id);
+    providerRef.current = provider;
+
+    provider.on("synced", () => {
+      setCollabConnected(true);
+      wasConnectedRef.current = true;
+      setIsReconnecting(false);
+    });
+
+    provider.on("disconnected", ({ code }: { wasSynced: boolean; code: number }) => {
+      setCollabConnected(false);
+      if (wasConnectedRef.current && code !== 4403 && code !== 4004) {
+        setIsReconnecting(true);
+      }
+    });
+
+    provider.on("awareness", (states: Map<number, any>) => {
+      const users: CollabUser[] = [];
+      states.forEach((state) => {
+        if (state.user && state.user.id !== user?.id) {
+          users.push(state.user);
+        }
+      });
+      const uniqueUsers = Array.from(
+        new Map(users.map((u) => [u.id, u])).values(),
+      );
+      setCollaborators(uniqueUsers);
+    });
+
+    return () => {
+      provider.destroy();
+      providerRef.current = null;
+      setCollabConnected(false);
+      setCollaborators([]);
+      setIsReconnecting(false);
+      wasConnectedRef.current = false;
+    };
+  }, [params.id, isNew, canEdit, user?.id]);
 
   useEffect(() => {
     if (note && editor && !contentLoaded) {
@@ -400,6 +571,7 @@ export default function NoteEditor() {
       queryClient.invalidateQueries({ queryKey: ["/api/notes", data.id] });
       toast({ title: isNew ? "Note created" : "Note saved" });
       setHasChanges(false);
+      dirtyRef.current = false;
       if (isNew) {
         setLocation(`/notes/${data.id}`);
       }
@@ -621,6 +793,13 @@ export default function NoteEditor() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
+      {isReconnecting && (
+        <div className="flex items-center gap-2 p-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 rounded-md text-sm" data-testid="banner-reconnecting">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          Reconnecting to collaboration server...
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3">
           <Button
@@ -633,15 +812,54 @@ export default function NoteEditor() {
           </Button>
           <h1 className="text-xl font-bold">
             {isNew ? "New Note" : isOwner ? "Edit Note" : canEdit ? "Edit Note (Editor)" : isCommenter ? "View Note (Commenter)" : "View Note"}
-
           </h1>
-          {hasChanges && canEdit && (
-            <Badge variant="outline" className="text-xs">
+          {collabConnected && canEdit && (
+            <Badge variant="outline" className="text-xs gap-1 border-green-500/50 text-green-700 dark:text-green-400" data-testid="badge-collab-connected">
+              <Wifi className="w-3 h-3" />
+              Auto-saving
+            </Badge>
+          )}
+          {!collabConnected && hasChanges && canEdit && (
+            <Badge variant="outline" className="text-xs" data-testid="badge-unsaved">
               Unsaved changes
             </Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
+          {!isNew && collaborators.length > 0 && (
+            <TooltipProvider>
+              <div className="flex items-center gap-1 mr-2" data-testid="collaborator-presence">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {collaborators.length} other{collaborators.length !== 1 ? "s" : ""} editing
+                </span>
+                <div className="flex -space-x-2 ml-1">
+                  {collaborators.slice(0, 5).map((collab) => (
+                    <Tooltip key={collab.id}>
+                      <TooltipTrigger asChild>
+                        <div
+                          className="w-7 h-7 rounded-full border-2 border-background flex items-center justify-center text-[10px] font-bold text-white"
+                          style={{ backgroundColor: collab.color }}
+                          data-testid={`avatar-collaborator-${collab.id}`}
+                        >
+                          {collab.name.charAt(0).toUpperCase()}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{collab.name}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                  {collaborators.length > 5 && (
+                    <div className="w-7 h-7 rounded-full border-2 border-background flex items-center justify-center text-[10px] font-bold bg-muted text-muted-foreground">
+                      +{collaborators.length - 5}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </TooltipProvider>
+          )}
+
           {!isNew && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

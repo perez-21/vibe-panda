@@ -67,6 +67,7 @@
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
     "katex": "^0.16.38",
+    "lib0": "^0.2.117",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",
     "multer": "^2.1.1",
@@ -89,6 +90,9 @@
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
+    "y-prosemirror": "^1.3.7",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.29",
     "zod": "^3.24.2",
     "zod-validation-error": "^3.4.0"
   },

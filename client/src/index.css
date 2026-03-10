@@ -342,3 +342,32 @@
   background-color: rgba(251, 191, 36, 0.35);
   border-radius: 2px;
 }
+
+.yRemoteSelection {
+  background-color: var(--collab-selection-color, rgba(100, 160, 255, 0.3));
+}
+
+.yRemoteSelectionHead {
+  position: absolute;
+  border-left: 2px solid var(--collab-cursor-color, #4285f4);
+  border-top: 2px solid var(--collab-cursor-color, #4285f4);
+  height: 1.2em;
+  box-sizing: border-box;
+}
+
+.yRemoteSelectionHead::after {
+  content: attr(data-client-name);
+  position: absolute;
+  top: -1.4em;
+  left: -2px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 4px;
+  border-radius: 3px 3px 3px 0;
+  white-space: nowrap;
+  color: white;
+  background-color: var(--collab-cursor-color, #4285f4);
+  pointer-events: none;
+  user-select: none;
+}
