@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import type { Module, Note, ModuleItem } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { ShareDialog } from "@/components/share-dialog";
 import { format } from "date-fns";
 
 type ModuleDetailResponse = Module & {
@@ -130,12 +131,17 @@ export default function ModuleDetail() {
             )}
           </div>
         </div>
-        {module.isOwner && (
-          <Button onClick={() => setShowAddNote(true)} data-testid="button-add-note-to-module">
-            <Plus className="w-4 h-4 mr-1" />
-            Add Note
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {module.isOwner && (
+            <ShareDialog resourceType="modules" resourceId={params.id!} />
+          )}
+          {module.isOwner && (
+            <Button onClick={() => setShowAddNote(true)} data-testid="button-add-note-to-module">
+              <Plus className="w-4 h-4 mr-1" />
+              Add Note
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">

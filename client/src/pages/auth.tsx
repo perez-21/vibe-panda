@@ -9,6 +9,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpen, Users, Search, ArrowRight } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { SiGoogle } from "react-icons/si";
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -34,6 +36,14 @@ export default function AuthPage() {
   const { login, register } = useAuth();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { data: googleAuth } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/auth/google/enabled"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/google/enabled");
+      return res.json();
+    },
+  });
 
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -159,6 +169,28 @@ export default function AuthPage() {
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </form>
+              {googleAuth?.enabled && (
+                <>
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">or</span>
+                    </div>
+                  </div>
+                  <Button
+                    data-testid="button-google-login"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { window.location.href = "/api/auth/google"; }}
+                    type="button"
+                  >
+                    <SiGoogle className="w-4 h-4 mr-2" />
+                    Sign in with Google
+                  </Button>
+                </>
+              )}
             </Form>
           ) : (
             <Form {...registerForm}>
@@ -261,6 +293,28 @@ export default function AuthPage() {
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </form>
+              {googleAuth?.enabled && (
+                <>
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">or</span>
+                    </div>
+                  </div>
+                  <Button
+                    data-testid="button-google-register"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => { window.location.href = "/api/auth/google"; }}
+                    type="button"
+                  >
+                    <SiGoogle className="w-4 h-4 mr-2" />
+                    Sign up with Google
+                  </Button>
+                </>
+              )}
             </Form>
           )}
         </div>

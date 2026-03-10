@@ -15,14 +15,21 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Save, ArrowLeft, Globe, Lock, GitFork, Bookmark, BookmarkCheck } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Save, ArrowLeft, Globe, Lock, GitFork, Bookmark, BookmarkCheck, Download, FileText, FileCode, File } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { EditorToolbar } from "@/components/editor-toolbar";
+import { ShareDialog } from "@/components/share-dialog";
 import type { Note } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
 
-type NoteWithOwner = Note & { isOwner?: boolean };
+type NoteWithOwner = Note & { isOwner?: boolean; collaboratorRole?: string | null };
 
 export default function NoteEditor() {
   const params = useParams<{ id: string }>();
@@ -83,6 +90,7 @@ export default function NoteEditor() {
   });
 
   const isOwner = isNew || note?.isOwner || note?.ownerId === user?.id;
+  const canEdit = isOwner || note?.collaboratorRole === "editor";
 
   useEffect(() => {
     if (note && editor && !contentLoaded) {
@@ -110,9 +118,9 @@ export default function NoteEditor() {
 
   useEffect(() => {
     if (editor) {
-      editor.setEditable(isOwner);
+      editor.setEditable(canEdit);
     }
-  }, [editor, isOwner]);
+  }, [editor, canEdit]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -192,6 +200,29 @@ export default function NoteEditor() {
     },
   });
 
+  const handleExport = async (format: string) => {
+    try {
+      const response = await fetch(`/api/notes/${params.id}/export?format=${format}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Export failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = response.headers.get("Content-Disposition");
+      const filename = disposition?.match(/filename="(.+)"/)?.[1] || `note.${format}`;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast({ title: `Exported as ${format.toUpperCase()}` });
+    } catch {
+      toast({ title: "Export failed", variant: "destructive" });
+    }
+  };
+
   if (!isNew && isLoading) {
     return (
       <div className="p-6 max-w-4xl mx-auto space-y-4">
@@ -230,15 +261,44 @@ export default function NoteEditor() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-xl font-bold">
-            {isNew ? "New Note" : isOwner ? "Edit Note" : "View Note"}
+            {isNew ? "New Note" : isOwner ? "Edit Note" : canEdit ? "Edit Note (Editor)" : "View Note"}
           </h1>
-          {hasChanges && isOwner && (
+          {hasChanges && canEdit && (
             <Badge variant="outline" className="text-xs">
               Unsaved changes
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          {!isNew && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-export-note">
+                  <Download className="w-4 h-4 mr-1" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={() => handleExport("txt")} data-testid="button-export-txt">
+                  <File className="w-4 h-4 mr-2" />
+                  Plain Text (.txt)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("md")} data-testid="button-export-md">
+                  <FileCode className="w-4 h-4 mr-2" />
+                  Markdown (.md)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("pdf")} data-testid="button-export-pdf">
+                  <FileText className="w-4 h-4 mr-2" />
+                  HTML Document (.html)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {isOwner && !isNew && (
+            <ShareDialog resourceType="notes" resourceId={params.id!} />
+          )}
+
           {isOwner ? (
             <>
               <div className="flex items-center gap-2">
@@ -272,6 +332,15 @@ export default function NoteEditor() {
                 {saveMutation.isPending ? "Saving..." : "Save"}
               </Button>
             </>
+          ) : canEdit ? (
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !title.trim()}
+              data-testid="button-save-note"
+            >
+              <Save className="w-4 h-4 mr-1" />
+              {saveMutation.isPending ? "Saving..." : "Save"}
+            </Button>
           ) : (
             <>
               <Button
@@ -308,14 +377,14 @@ export default function NoteEditor() {
           setTitle(e.target.value);
           setHasChanges(true);
         }}
-        readOnly={!isOwner}
+        readOnly={!canEdit}
         className={`text-lg font-semibold border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary ${
-          !isOwner ? "cursor-default" : ""
+          !canEdit ? "cursor-default" : ""
         }`}
       />
 
       <div className="border rounded-md" data-testid="editor-wrapper">
-        {isOwner && <EditorToolbar editor={editor} />}
+        {canEdit && <EditorToolbar editor={editor} />}
         <EditorContent editor={editor} />
       </div>
     </div>

@@ -11,7 +11,9 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser & { password: string }): Promise<User>;
+  getUserByGoogleId(googleId: string): Promise<User | undefined>;
+  createUser(user: InsertUser & { password: string; googleId?: string }): Promise<User>;
+  updateUser(id: string, data: Partial<{ googleId: string }>): Promise<User | undefined>;
 
   createNote(ownerId: string, note: InsertNote): Promise<Note>;
   getNote(id: string): Promise<Note | undefined>;
@@ -19,14 +21,14 @@ export interface IStorage {
   updateNote(id: string, ownerId: string, data: Partial<InsertNote>): Promise<Note | undefined>;
   deleteNote(id: string, ownerId: string): Promise<boolean>;
   forkNote(noteId: string, userId: string): Promise<Note>;
-  getPublicNotes(): Promise<(Note & { owner: { displayName: string; username: string } })[]>;
+  getPublicNotes(query?: string): Promise<(Note & { owner: { displayName: string; username: string } })[]>;
 
   createModule(ownerId: string, data: InsertModule): Promise<Module>;
   getModule(id: string, requesterId?: string): Promise<any>;
   getUserModules(userId: string): Promise<Module[]>;
   updateModule(id: string, ownerId: string, data: Partial<InsertModule>): Promise<Module | undefined>;
   deleteModule(id: string, ownerId: string): Promise<boolean>;
-  getPublicModules(): Promise<any[]>;
+  getPublicModules(query?: string, category?: string): Promise<any[]>;
 
   addModuleItem(moduleId: string, noteId: string): Promise<ModuleItem>;
   removeModuleItem(moduleId: string, noteId: string): Promise<boolean>;
@@ -34,6 +36,12 @@ export interface IStorage {
   getSavedItems(userId: string): Promise<any[]>;
   saveItem(userId: string, data: InsertSavedItem): Promise<SavedItem>;
   removeSavedItem(id: string, userId: string): Promise<boolean>;
+
+  getCollaborators(noteId?: string, moduleId?: string): Promise<(Collaborator & { user: { displayName: string; email: string; username: string } })[]>;
+  addCollaborator(data: { noteId?: string; moduleId?: string; userId: string; role: string }): Promise<Collaborator>;
+  removeCollaborator(id: string, noteId?: string, moduleId?: string): Promise<boolean>;
+  getCollaboratorRole(noteId: string | undefined, moduleId: string | undefined, userId: string): Promise<string | null>;
+  getAllCategoryLabels(): Promise<string[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -52,8 +60,18 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async createUser(data: InsertUser & { password: string }): Promise<User> {
+  async getUserByGoogleId(googleId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
+    return user;
+  }
+
+  async createUser(data: InsertUser & { password: string; googleId?: string }): Promise<User> {
     const [user] = await db.insert(users).values(data).returning();
+    return user;
+  }
+
+  async updateUser(id: string, data: Partial<{ googleId: string }>): Promise<User | undefined> {
+    const [user] = await db.update(users).set(data).where(eq(users.id, id)).returning();
     return user;
   }
 
@@ -100,7 +118,13 @@ export class DatabaseStorage implements IStorage {
     return forked;
   }
 
-  async getPublicNotes(): Promise<(Note & { owner: { displayName: string; username: string } })[]> {
+  async getPublicNotes(query?: string): Promise<(Note & { owner: { displayName: string; username: string } })[]> {
+    const conditions = [eq(notes.isPublic, true)];
+    if (query) {
+      const pattern = `%${query}%`;
+      conditions.push(or(ilike(notes.title, pattern), ilike(notes.content, pattern))!);
+    }
+
     const result = await db
       .select({
         id: notes.id,
@@ -116,7 +140,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(notes)
       .innerJoin(users, eq(notes.ownerId, users.id))
-      .where(eq(notes.isPublic, true))
+      .where(and(...conditions))
       .orderBy(desc(notes.updatedAt));
 
     return result.map((r) => ({
@@ -186,7 +210,22 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getPublicModules(): Promise<any[]> {
+  async getPublicModules(query?: string, category?: string): Promise<any[]> {
+    const conditions = [eq(modules.isPublic, true)];
+    if (query) {
+      const pattern = `%${query}%`;
+      conditions.push(
+        or(
+          ilike(modules.title, pattern),
+          ilike(modules.description, pattern),
+          sql`EXISTS (SELECT 1 FROM unnest(${modules.categoryLabels}) AS label WHERE label ILIKE ${pattern})`
+        )!
+      );
+    }
+    if (category) {
+      conditions.push(sql`${category} = ANY(${modules.categoryLabels})`);
+    }
+
     const result = await db
       .select({
         id: modules.id,
@@ -202,7 +241,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(modules)
       .innerJoin(users, eq(modules.ownerId, users.id))
-      .where(eq(modules.isPublic, true))
+      .where(and(...conditions))
       .orderBy(desc(modules.updatedAt));
 
     const modulesWithCounts = await Promise.all(
@@ -336,6 +375,85 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(savedItems.id, id), eq(savedItems.userId, userId)))
       .returning();
     return result.length > 0;
+  }
+
+  async getCollaborators(noteId?: string, moduleId?: string): Promise<(Collaborator & { user: { displayName: string; email: string; username: string } })[]> {
+    const conditions = [];
+    if (noteId) conditions.push(eq(collaborators.noteId, noteId));
+    if (moduleId) conditions.push(eq(collaborators.moduleId, moduleId));
+    if (conditions.length === 0) return [];
+
+    const result = await db
+      .select({
+        id: collaborators.id,
+        noteId: collaborators.noteId,
+        moduleId: collaborators.moduleId,
+        userId: collaborators.userId,
+        role: collaborators.role,
+        userDisplayName: users.displayName,
+        userEmail: users.email,
+        userUsername: users.username,
+      })
+      .from(collaborators)
+      .innerJoin(users, eq(collaborators.userId, users.id))
+      .where(and(...conditions));
+
+    return result.map((r) => ({
+      id: r.id,
+      noteId: r.noteId,
+      moduleId: r.moduleId,
+      userId: r.userId,
+      role: r.role,
+      user: { displayName: r.userDisplayName, email: r.userEmail, username: r.userUsername },
+    }));
+  }
+
+  async addCollaborator(data: { noteId?: string; moduleId?: string; userId: string; role: string }): Promise<Collaborator> {
+    const [collab] = await db.insert(collaborators).values({
+      noteId: data.noteId || null,
+      moduleId: data.moduleId || null,
+      userId: data.userId,
+      role: data.role,
+    }).returning();
+    return collab;
+  }
+
+  async removeCollaborator(id: string, noteId?: string, moduleId?: string): Promise<boolean> {
+    const conditions = [eq(collaborators.id, id)];
+    if (noteId) conditions.push(eq(collaborators.noteId, noteId));
+    if (moduleId) conditions.push(eq(collaborators.moduleId, moduleId));
+    const result = await db.delete(collaborators).where(and(...conditions)).returning();
+    return result.length > 0;
+  }
+
+  async getCollaboratorRole(noteId: string | undefined, moduleId: string | undefined, userId: string): Promise<string | null> {
+    const conditions = [eq(collaborators.userId, userId)];
+    if (noteId) conditions.push(eq(collaborators.noteId, noteId));
+    if (moduleId) conditions.push(eq(collaborators.moduleId, moduleId));
+
+    const [result] = await db
+      .select({ role: collaborators.role })
+      .from(collaborators)
+      .where(and(...conditions));
+
+    return result?.role || null;
+  }
+
+  async getAllCategoryLabels(): Promise<string[]> {
+    const result = await db
+      .select({ labels: modules.categoryLabels })
+      .from(modules)
+      .where(eq(modules.isPublic, true));
+
+    const allLabels = new Set<string>();
+    for (const row of result) {
+      if (row.labels) {
+        for (const label of row.labels) {
+          allLabels.add(label);
+        }
+      }
+    }
+    return Array.from(allLabels).sort();
   }
 }
 

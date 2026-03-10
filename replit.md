@@ -51,17 +51,31 @@ shared/
 - `POST /api/auth/login` - Login
 - `POST /api/auth/logout` - Logout
 - `GET /api/auth/me` - Current user
+- `GET /api/auth/google` - Initiate Google OAuth (requires GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET env vars)
+- `GET /api/auth/google/callback` - Google OAuth callback
+- `GET /api/auth/google/enabled` - Check if Google OAuth is configured
 - `GET/POST /api/notes` - List/create notes
 - `GET/PATCH/DELETE /api/notes/:id` - Get/update/delete note
 - `POST /api/notes/:id/fork` - Fork a public note
+- `GET /api/notes/:id/export?format=txt|md|pdf` - Export note (txt, markdown, or HTML document)
+- `GET/POST/DELETE /api/notes/:id/collaborators` - Manage note collaborators (owner only)
 - `GET/POST /api/modules` - List/create modules
 - `GET/PATCH/DELETE /api/modules/:id` - Get/update/delete module
 - `POST /api/modules/:id/items` - Add note to module
 - `DELETE /api/modules/:id/items/:noteId` - Remove note from module
-- `GET /api/explore/notes` - Public notes
-- `GET /api/explore/modules` - Public modules
+- `GET/POST/DELETE /api/modules/:id/collaborators` - Manage module collaborators (owner only)
+- `GET /api/explore/notes?q=&category=` - Public notes with server-side search
+- `GET /api/explore/modules?q=&category=` - Public modules with server-side search
+- `GET /api/explore/categories` - Distinct category labels from public modules
 - `GET/POST /api/saved` - List/save items
 - `DELETE /api/saved/:id` - Remove saved item
+
+## Features Added (Tier 1)
+- **Note Export**: Export notes as .txt, .md, or .html via dropdown in note editor
+- **Collaborators**: Invite users by email as viewer/editor on notes and modules; ShareDialog component
+- **Server-side Search**: ILIKE search on explore page with category filter dropdown
+- **Google OAuth**: Conditional Google sign-in button (shown when env vars configured); googleId column on users table
+- **Rich Text**: Tiptap editor with toolbar, HTML content storage, backward-compatible plain text loading
 
 ## Rich-Text Editor
 - Tiptap-based editor (StarterKit + Underline + Table + Placeholder extensions)

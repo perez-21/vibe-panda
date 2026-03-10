@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, FileText, FolderOpen, Bookmark, BookmarkCheck, GitFork, Clock, User } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Search, FileText, FolderOpen, Bookmark, BookmarkCheck, GitFork, Clock, User, X } from "lucide-react";
 import type { Note, Module } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -18,15 +19,44 @@ export type PublicModule = Module & { owner: { displayName: string; username: st
 
 export default function Explore() {
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [category, setCategory] = useState("");
   const [activeTab, setActiveTab] = useState("all");
   const { toast } = useToast();
 
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const notesQueryKey = ["/api/explore/notes", debouncedSearch];
+  const modulesQueryKey = ["/api/explore/modules", debouncedSearch, category];
+
   const { data: publicNotes, isLoading: notesLoading } = useQuery<PublicNote[]>({
-    queryKey: ["/api/explore/notes"],
+    queryKey: notesQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      const res = await fetch(`/api/explore/notes?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch notes");
+      return res.json();
+    },
   });
 
   const { data: publicModules, isLoading: modulesLoading } = useQuery<PublicModule[]>({
-    queryKey: ["/api/explore/modules"],
+    queryKey: modulesQueryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      if (category) params.set("category", category);
+      const res = await fetch(`/api/explore/modules?${params}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch modules");
+      return res.json();
+    },
+  });
+
+  const { data: categories } = useQuery<string[]>({
+    queryKey: ["/api/explore/categories"],
   });
 
   const { data: savedItems } = useQuery<any[]>({
@@ -79,15 +109,6 @@ export default function Explore() {
     )?.id;
   };
 
-  const filteredNotes = publicNotes?.filter(
-    (n) => n.title.toLowerCase().includes(search.toLowerCase())
-  );
-  const filteredModules = publicModules?.filter(
-    (m) =>
-      m.title.toLowerCase().includes(search.toLowerCase()) ||
-      m.categoryLabels?.some((l) => l.toLowerCase().includes(search.toLowerCase()))
-  );
-
   const isLoading = notesLoading || modulesLoading;
 
   return (
@@ -99,16 +120,39 @@ export default function Explore() {
         </p>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          data-testid="input-search-explore"
-          type="search"
-          placeholder="Search public notes, modules, and topics..."
-          className="pl-9"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            data-testid="input-search-explore"
+            type="search"
+            placeholder="Search titles, content, and topics..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={category || "all"} onValueChange={(v) => setCategory(v === "all" ? "" : v)}>
+          <SelectTrigger className="w-48" data-testid="select-category-filter">
+            <SelectValue placeholder="All categories" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {categories?.map((cat) => (
+              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {category && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setCategory("")}
+            data-testid="button-clear-category"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -127,14 +171,14 @@ export default function Explore() {
             </div>
           ) : (
             <>
-              {filteredModules && filteredModules.length > 0 && (
+              {publicModules && publicModules.length > 0 && (
                 <div className="space-y-3">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <FolderOpen className="w-5 h-5" />
                     Modules
                   </h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {filteredModules.map((mod) => (
+                    {publicModules.map((mod) => (
                       <ModuleCard
                         key={mod.id}
                         module={mod}
@@ -150,14 +194,14 @@ export default function Explore() {
                 </div>
               )}
 
-              {filteredNotes && filteredNotes.length > 0 && (
+              {publicNotes && publicNotes.length > 0 && (
                 <div className="space-y-3">
                   <h2 className="text-lg font-semibold flex items-center gap-2">
                     <FileText className="w-5 h-5" />
                     Notes
                   </h2>
                   <div className="space-y-2">
-                    {filteredNotes.map((note) => (
+                    {publicNotes.map((note) => (
                       <NoteCard
                         key={note.id}
                         note={note}
@@ -174,7 +218,7 @@ export default function Explore() {
                 </div>
               )}
 
-              {(!filteredNotes?.length && !filteredModules?.length) && (
+              {(!publicNotes?.length && !publicModules?.length) && (
                 <Card>
                   <CardContent className="p-12 text-center">
                     <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
@@ -194,8 +238,8 @@ export default function Explore() {
             <div className="space-y-3">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full rounded-md" />)}
             </div>
-          ) : filteredNotes && filteredNotes.length > 0 ? (
-            filteredNotes.map((note) => (
+          ) : publicNotes && publicNotes.length > 0 ? (
+            publicNotes.map((note) => (
               <NoteCard
                 key={note.id}
                 note={note}
@@ -222,9 +266,9 @@ export default function Explore() {
             <div className="space-y-3">
               {[1, 2, 3].map((i) => <Skeleton key={i} className="h-28 w-full rounded-md" />)}
             </div>
-          ) : filteredModules && filteredModules.length > 0 ? (
+          ) : publicModules && publicModules.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {filteredModules.map((mod) => (
+              {publicModules.map((mod) => (
                 <ModuleCard
                   key={mod.id}
                   module={mod}
@@ -369,4 +413,3 @@ function ModuleCard({
     </Card>
   );
 }
-

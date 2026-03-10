@@ -1,5 +1,6 @@
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
@@ -70,6 +71,78 @@ export function setupAuth(app: Express) {
       }
     )
   );
+
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    const callbackURL = process.env.REPLIT_DEPLOYMENT
+      ? `https://${process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG + ".replit.app"}/api/auth/google/callback`
+      : "/api/auth/google/callback";
+
+    passport.use(
+      new GoogleStrategy(
+        {
+          clientID: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          callbackURL,
+        },
+        async (_accessToken, _refreshToken, profile, done) => {
+          try {
+            const googleId = profile.id;
+            const email = profile.emails?.[0]?.value;
+            const displayName = profile.displayName || email || "User";
+
+            let user = await storage.getUserByGoogleId(googleId);
+            if (user) return done(null, user);
+
+            if (email) {
+              user = await storage.getUserByEmail(email);
+              if (user) {
+                if (!user.googleId) {
+                  await storage.updateUser(user.id, { googleId });
+                }
+                return done(null, user);
+              }
+            }
+
+            const username = (email?.split("@")[0] || `user_${googleId}`).replace(/[^a-zA-Z0-9_]/g, "_").substring(0, 20);
+            let uniqueUsername = username;
+            let counter = 1;
+            while (await storage.getUserByUsername(uniqueUsername)) {
+              uniqueUsername = `${username.substring(0, 17)}_${counter}`;
+              counter++;
+            }
+
+            const randomPassword = randomBytes(32).toString("hex");
+            const hashedPassword = await hashPassword(randomPassword);
+
+            user = await storage.createUser({
+              username: uniqueUsername,
+              email: email || `${googleId}@google.oauth`,
+              password: hashedPassword,
+              displayName,
+              googleId,
+            });
+            return done(null, user);
+          } catch (err) {
+            return done(err as Error);
+          }
+        }
+      )
+    );
+
+    app.get("/api/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+
+    app.get(
+      "/api/auth/google/callback",
+      passport.authenticate("google", { failureRedirect: "/?error=google_auth_failed" }),
+      (_req, res) => {
+        res.redirect("/");
+      }
+    );
+  }
+
+  app.get("/api/auth/google/enabled", (_req, res) => {
+    res.json({ enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) });
+  });
 
   passport.serializeUser((user: Express.User, done) => {
     done(null, user.id);

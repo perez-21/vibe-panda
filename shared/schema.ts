@@ -10,6 +10,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   displayName: text("display_name").notNull(),
   avatar: text("avatar"),
+  googleId: text("google_id").unique(),
 });
 
 export const notes = pgTable("notes", {
