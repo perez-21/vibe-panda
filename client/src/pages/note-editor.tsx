@@ -1,18 +1,25 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Underline as UnderlineExt } from "@tiptap/extension-underline";
+import { Table as TableExt } from "@tiptap/extension-table";
+import { TableRow } from "@tiptap/extension-table-row";
+import { TableCell } from "@tiptap/extension-table-cell";
+import { TableHeader } from "@tiptap/extension-table-header";
+import { Placeholder } from "@tiptap/extension-placeholder";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Save, ArrowLeft, Globe, Lock, User, GitFork, Bookmark, BookmarkCheck } from "lucide-react";
+import { Save, ArrowLeft, Globe, Lock, GitFork, Bookmark, BookmarkCheck } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { EditorToolbar } from "@/components/editor-toolbar";
 import type { Note } from "@shared/schema";
-import { format } from "date-fns";
 import { useAuth } from "@/lib/auth";
 
 type NoteWithOwner = Note & { isOwner?: boolean };
@@ -25,9 +32,50 @@ export default function NoteEditor() {
   const isNew = params.id === "new";
 
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [contentLoaded, setContentLoaded] = useState(false);
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+      }),
+      UnderlineExt,
+      TableExt.configure({ resizable: false }),
+      TableRow,
+      TableCell,
+      TableHeader,
+      Placeholder.configure({
+        placeholder:
+          "Start writing your note here...\n\nUse the toolbar above to format your content with headings, lists, code blocks, and more.",
+      }),
+    ],
+    editorProps: {
+      attributes: {
+        class:
+          "tiptap prose prose-sm sm:prose-base max-w-none dark:prose-invert focus:outline-none min-h-[500px] px-4 py-3",
+        "data-testid": "input-note-content",
+      },
+    },
+    onUpdate: () => {
+      setHasChanges(true);
+    },
+  });
+
+  useEffect(() => {
+    if (isNew) {
+      setTitle("");
+      setIsPublic(false);
+      setHasChanges(false);
+      setContentLoaded(false);
+      if (editor) {
+        editor.commands.clearContent();
+      }
+    } else {
+      setContentLoaded(false);
+    }
+  }, [isNew, params.id, editor]);
 
   const { data: note, isLoading } = useQuery<NoteWithOwner>({
     queryKey: ["/api/notes", params.id],
@@ -37,20 +85,51 @@ export default function NoteEditor() {
   const isOwner = isNew || note?.isOwner || note?.ownerId === user?.id;
 
   useEffect(() => {
-    if (note) {
+    if (note && editor && !contentLoaded) {
       setTitle(note.title);
-      setContent(note.content);
       setIsPublic(note.isPublic);
+      if (note.content) {
+        const isHtml = note.content.trim().startsWith("<");
+        if (isHtml) {
+          editor.commands.setContent(note.content);
+        } else {
+          editor.commands.setContent(
+            note.content
+              .split("\n")
+              .map((line) => `<p>${line || "<br>"}</p>`)
+              .join("")
+          );
+        }
+      } else {
+        editor.commands.clearContent();
+      }
+      setContentLoaded(true);
+      setHasChanges(false);
     }
-  }, [note]);
+  }, [note, editor, contentLoaded]);
+
+  useEffect(() => {
+    if (editor) {
+      editor.setEditable(isOwner);
+    }
+  }, [editor, isOwner]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const content = editor?.getHTML() || "";
       if (isNew) {
-        const res = await apiRequest("POST", "/api/notes", { title, content, isPublic });
+        const res = await apiRequest("POST", "/api/notes", {
+          title,
+          content,
+          isPublic,
+        });
         return res.json();
       } else {
-        const res = await apiRequest("PATCH", `/api/notes/${params.id}`, { title, content, isPublic });
+        const res = await apiRequest("PATCH", `/api/notes/${params.id}`, {
+          title,
+          content,
+          isPublic,
+        });
         return res.json();
       }
     },
@@ -64,7 +143,11 @@ export default function NoteEditor() {
       }
     },
     onError: (e: any) => {
-      toast({ title: "Failed to save", description: e.message, variant: "destructive" });
+      toast({
+        title: "Failed to save",
+        description: e.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -79,7 +162,11 @@ export default function NoteEditor() {
       setLocation(`/notes/${data.id}`);
     },
     onError: (e: any) => {
-      toast({ title: "Failed to fork", description: e.message, variant: "destructive" });
+      toast({
+        title: "Failed to fork",
+        description: e.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -105,13 +192,6 @@ export default function NoteEditor() {
     },
   });
 
-  const handleChange = useCallback((setter: (v: string) => void) => {
-    return (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setter(e.target.value);
-      setHasChanges(true);
-    };
-  }, []);
-
   if (!isNew && isLoading) {
     return (
       <div className="p-6 max-w-4xl mx-auto space-y-4">
@@ -126,7 +206,11 @@ export default function NoteEditor() {
     return (
       <div className="p-6 max-w-4xl mx-auto text-center">
         <p className="text-muted-foreground">Note not found.</p>
-        <Button variant="outline" className="mt-4" onClick={() => setLocation("/notes")}>
+        <Button
+          variant="outline"
+          className="mt-4"
+          onClick={() => setLocation("/notes")}
+        >
           Back to Notes
         </Button>
       </div>
@@ -149,7 +233,9 @@ export default function NoteEditor() {
             {isNew ? "New Note" : isOwner ? "Edit Note" : "View Note"}
           </h1>
           {hasChanges && isOwner && (
-            <Badge variant="outline" className="text-xs">Unsaved changes</Badge>
+            <Badge variant="outline" className="text-xs">
+              Unsaved changes
+            </Badge>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -161,7 +247,10 @@ export default function NoteEditor() {
                 ) : (
                   <Lock className="w-4 h-4 text-muted-foreground" />
                 )}
-                <Label htmlFor="public-toggle" className="text-sm cursor-pointer">
+                <Label
+                  htmlFor="public-toggle"
+                  className="text-sm cursor-pointer"
+                >
                   {isPublic ? "Public" : "Private"}
                 </Label>
                 <Switch
@@ -211,48 +300,24 @@ export default function NoteEditor() {
         </div>
       </div>
 
-      {isOwner ? (
-        <>
-          <Input
-            data-testid="input-note-title"
-            placeholder="Note title"
-            value={title}
-            onChange={handleChange(setTitle)}
-            className="text-lg font-semibold border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary"
-          />
-          <Textarea
-            data-testid="input-note-content"
-            placeholder="Start writing your note here...
+      <Input
+        data-testid="input-note-title"
+        placeholder="Note title"
+        value={title}
+        onChange={(e) => {
+          setTitle(e.target.value);
+          setHasChanges(true);
+        }}
+        readOnly={!isOwner}
+        className={`text-lg font-semibold border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary ${
+          !isOwner ? "cursor-default" : ""
+        }`}
+      />
 
-Use this space to capture your study materials, lecture notes, formulas, key concepts, and anything else that helps you learn.
-
-Tips:
-- Keep your notes organized with clear sections
-- Use bullet points for key concepts
-- Add examples to reinforce understanding"
-            value={content}
-            onChange={handleChange(setContent)}
-            className="min-h-[500px] resize-none text-base leading-relaxed"
-          />
-        </>
-      ) : (
-        <>
-          <div>
-            <h2 className="text-2xl font-bold" data-testid="text-view-note-title">{title}</h2>
-            {note && (
-              <div className="flex items-center gap-3 mt-2 text-sm text-muted-foreground flex-wrap">
-                <Badge variant={isPublic ? "default" : "secondary"}>
-                  {isPublic ? "Public" : "Private"}
-                </Badge>
-                <span>Updated {format(new Date(note.updatedAt), "MMM d, yyyy")}</span>
-              </div>
-            )}
-          </div>
-          <div className="prose prose-sm max-w-none dark:prose-invert whitespace-pre-wrap leading-relaxed" data-testid="text-view-note-content">
-            {content}
-          </div>
-        </>
-      )}
+      <div className="border rounded-md" data-testid="editor-wrapper">
+        {isOwner && <EditorToolbar editor={editor} />}
+        <EditorContent editor={editor} />
+      </div>
     </div>
   );
 }

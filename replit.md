@@ -63,6 +63,15 @@ shared/
 - `GET/POST /api/saved` - List/save items
 - `DELETE /api/saved/:id` - Remove saved item
 
+## Rich-Text Editor
+- Tiptap-based editor (StarterKit + Underline + Table + Placeholder extensions)
+- Toolbar component: `client/src/components/editor-toolbar.tsx`
+- Editor integrated in `client/src/pages/note-editor.tsx`
+- Content stored as HTML in `notes.content` column; backward-compatible with plain text (converted to `<p>` on load)
+- Tiptap CSS styles scoped under `.tiptap` class in `client/src/index.css`
+- Toolbar re-renders on editor transactions for accurate active state
+- Packages: @tiptap/react, @tiptap/starter-kit, @tiptap/pm, @tiptap/extension-underline, @tiptap/extension-table, @tiptap/extension-table-row, @tiptap/extension-table-cell, @tiptap/extension-table-header, @tiptap/extension-placeholder
+
 ## Seed Data
 - 3 sample users (mary@university.edu, alex@university.edu, sarah@university.edu) - password: password123
 - 6 notes (5 public, 1 private) covering CS, Math, OS, and DB topics
