@@ -7,6 +7,7 @@ import { promisify } from "util";
 import type { Express } from "express";
 import { storage } from "./storage";
 import { pool } from "./db";
+import config from "./config";
 import connectPgSimple from "connect-pg-simple";
 import type { User as SchemaUser } from "@shared/schema";
 
@@ -18,7 +19,10 @@ export async function hashPassword(password: string): Promise<string> {
   return `${buf.toString("hex")}.${salt}`;
 }
 
-export async function comparePasswords(supplied: string, stored: string): Promise<boolean> {
+export async function comparePasswords(
+  supplied: string,
+  stored: string,
+): Promise<boolean> {
   const [hashed, salt] = stored.split(".");
   const hashedBuf = Buffer.from(hashed, "hex");
   const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
@@ -41,7 +45,7 @@ export function setupAuth(app: Express) {
         pool,
         createTableIfMissing: true,
       }),
-      secret: process.env.SESSION_SECRET || "notepanda-dev-secret",
+      secret: config.SESSION_SECRET || "notepanda-dev-secret",
       resave: false,
       saveUninitialized: false,
       cookie: {
@@ -50,7 +54,7 @@ export function setupAuth(app: Express) {
         secure: false,
         sameSite: "lax",
       },
-    })
+    }),
   );
 
   app.use(passport.initialize());
@@ -62,27 +66,29 @@ export function setupAuth(app: Express) {
       async (email, password, done) => {
         try {
           const user = await storage.getUserByEmail(email);
-          if (!user) return done(null, false, { message: "Invalid email or password" });
+          if (!user)
+            return done(null, false, { message: "Invalid email or password" });
           const valid = await comparePasswords(password, user.password);
-          if (!valid) return done(null, false, { message: "Invalid email or password" });
+          if (!valid)
+            return done(null, false, { message: "Invalid email or password" });
           return done(null, user);
         } catch (err) {
           return done(err);
         }
-      }
-    )
+      },
+    ),
   );
 
-  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
-    const callbackURL = process.env.REPLIT_DEPLOYMENT
-      ? `https://${process.env.REPLIT_DEV_DOMAIN || process.env.REPL_SLUG + ".replit.app"}/api/auth/google/callback`
+  if (config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET) {
+    const callbackURL = config.REPLIT_DEPLOYMENT
+      ? `https://${config.REPLIT_DEV_DOMAIN || config.REPL_SLUG + ".replit.app"}/api/auth/google/callback`
       : "/api/auth/google/callback";
 
     passport.use(
       new GoogleStrategy(
         {
-          clientID: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          clientID: config.GOOGLE_CLIENT_ID,
+          clientSecret: config.GOOGLE_CLIENT_SECRET,
           callbackURL,
         },
         async (_accessToken, _refreshToken, profile, done) => {
@@ -104,7 +110,9 @@ export function setupAuth(app: Express) {
               }
             }
 
-            const username = (email?.split("@")[0] || `user_${googleId}`).replace(/[^a-zA-Z0-9_]/g, "_").substring(0, 20);
+            const username = (email?.split("@")[0] || `user_${googleId}`)
+              .replace(/[^a-zA-Z0-9_]/g, "_")
+              .substring(0, 20);
             let uniqueUsername = username;
             let counter = 1;
             while (await storage.getUserByUsername(uniqueUsername)) {
@@ -126,23 +134,30 @@ export function setupAuth(app: Express) {
           } catch (err) {
             return done(err as Error);
           }
-        }
-      )
+        },
+      ),
     );
 
-    app.get("/api/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+    app.get(
+      "/api/auth/google",
+      passport.authenticate("google", { scope: ["profile", "email"] }),
+    );
 
     app.get(
       "/api/auth/google/callback",
-      passport.authenticate("google", { failureRedirect: "/?error=google_auth_failed" }),
+      passport.authenticate("google", {
+        failureRedirect: "/?error=google_auth_failed",
+      }),
       (_req, res) => {
         res.redirect("/");
-      }
+      },
     );
   }
 
   app.get("/api/auth/google/enabled", (_req, res) => {
-    res.json({ enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) });
+    res.json({
+      enabled: !!(config.GOOGLE_CLIENT_ID && config.GOOGLE_CLIENT_SECRET),
+    });
   });
 
   passport.serializeUser((user: Express.User, done) => {
@@ -195,15 +210,21 @@ export function setupAuth(app: Express) {
   });
 
   app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: SchemaUser | false, info: any) => {
-      if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
-      req.login(user, (err) => {
+    passport.authenticate(
+      "local",
+      (err: any, user: SchemaUser | false, info: any) => {
         if (err) return next(err);
-        const { password: _, ...safeUser } = user;
-        return res.json(safeUser);
-      });
-    })(req, res, next);
+        if (!user)
+          return res
+            .status(401)
+            .json({ message: info?.message || "Invalid credentials" });
+        req.login(user, (err) => {
+          if (err) return next(err);
+          const { password: _, ...safeUser } = user;
+          return res.json(safeUser);
+        });
+      },
+    )(req, res, next);
   });
 
   app.post("/api/auth/logout", (req, res) => {
