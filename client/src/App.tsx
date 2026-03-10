@@ -16,6 +16,7 @@ import ModulesList from "@/pages/modules-list";
 import ModuleDetail from "@/pages/module-detail";
 import Explore from "@/pages/explore";
 import Saved from "@/pages/saved";
+import Profile from "@/pages/profile";
 
 function AuthenticatedRouter() {
   return (
@@ -27,6 +28,7 @@ function AuthenticatedRouter() {
       <Route path="/modules/:id" component={ModuleDetail} />
       <Route path="/explore" component={Explore} />
       <Route path="/saved" component={Saved} />
+      <Route path="/profile" component={Profile} />
       <Route component={NotFound} />
     </Switch>
   );

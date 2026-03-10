@@ -17,6 +17,9 @@ import {
   Table,
   Undo,
   Redo,
+  ImageIcon,
+  Sigma,
+  SquareSigma,
 } from "lucide-react";
 
 interface EditorToolbarProps {
@@ -165,6 +168,56 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
           active: false,
           testId: "button-editor-table",
           title: "Insert Table",
+        },
+        {
+          icon: ImageIcon,
+          action: () => {
+            const url = window.prompt("Enter image URL:");
+            if (url) {
+              editor.chain().focus().setImage({ src: url }).run();
+            }
+          },
+          active: false,
+          disabled: false,
+          testId: "button-editor-image",
+          title: "Insert Image",
+        },
+      ],
+    },
+    {
+      group: "math",
+      items: [
+        {
+          icon: Sigma,
+          action: () => {
+            const latex = window.prompt("Enter LaTeX expression (inline):", "E = mc^2");
+            if (latex) {
+              editor.chain().focus().insertContent({
+                type: "mathInline",
+                attrs: { latex },
+              }).run();
+            }
+          },
+          active: false,
+          disabled: false,
+          testId: "button-editor-math-inline",
+          title: "Inline Math",
+        },
+        {
+          icon: SquareSigma,
+          action: () => {
+            const latex = window.prompt("Enter LaTeX expression (block):", "\\int_{a}^{b} f(x) \\, dx");
+            if (latex) {
+              editor.chain().focus().insertContent({
+                type: "mathBlock",
+                attrs: { latex },
+              }).run();
+            }
+          },
+          active: false,
+          disabled: false,
+          testId: "button-editor-math-block",
+          title: "Block Math",
         },
       ],
     },

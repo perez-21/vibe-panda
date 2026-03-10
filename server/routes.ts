@@ -18,6 +18,43 @@ export async function registerRoutes(
 ): Promise<Server> {
   setupAuth(app);
 
+  app.patch("/api/auth/profile", requireAuth, async (req, res) => {
+    try {
+      const { displayName } = req.body;
+      if (!displayName || typeof displayName !== "string" || displayName.trim().length < 2) {
+        return res.status(400).json({ message: "Display name must be at least 2 characters" });
+      }
+      const updated = await storage.updateUser(req.user!.id, { displayName: displayName.trim() });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      const { password, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/auth/avatar", requireAuth, async (req, res) => {
+    try {
+      const { avatar } = req.body;
+      if (!avatar || typeof avatar !== "string") {
+        return res.status(400).json({ message: "Avatar data URI is required" });
+      }
+      if (!avatar.startsWith("data:image/")) {
+        return res.status(400).json({ message: "Invalid image format" });
+      }
+      const maxSize = 2 * 1024 * 1024;
+      if (avatar.length > maxSize) {
+        return res.status(400).json({ message: "Image is too large. Maximum size is 2MB." });
+      }
+      const updated = await storage.updateUser(req.user!.id, { avatar });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      const { password, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.get("/api/notes", requireAuth, async (req, res) => {
     const notes = await storage.getUserNotes(req.user!.id);
     res.json(notes);
@@ -153,7 +190,7 @@ export async function registerRoutes(
       }
       const { email, role } = req.body;
       if (!email || !role) return res.status(400).json({ message: "email and role are required" });
-      if (!["viewer", "editor"].includes(role)) return res.status(400).json({ message: "Role must be viewer or editor" });
+      if (!["viewer", "editor", "commenter"].includes(role)) return res.status(400).json({ message: "Role must be viewer, editor, or commenter" });
 
       const targetUser = await storage.getUserByEmail(email);
       if (!targetUser) return res.status(404).json({ message: "No user found with that email" });
@@ -295,7 +332,7 @@ export async function registerRoutes(
       }
       const { email, role } = req.body;
       if (!email || !role) return res.status(400).json({ message: "email and role are required" });
-      if (!["viewer", "editor"].includes(role)) return res.status(400).json({ message: "Role must be viewer or editor" });
+      if (!["viewer", "editor", "commenter"].includes(role)) return res.status(400).json({ message: "Role must be viewer, editor, or commenter" });
 
       const targetUser = await storage.getUserByEmail(email);
       if (!targetUser) return res.status(404).json({ message: "No user found with that email" });

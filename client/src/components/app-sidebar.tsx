@@ -12,9 +12,9 @@ import {
   SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
-import { Home, FileText, FolderOpen, Compass, Bookmark, LogOut, Plus } from "lucide-react";
+import { Home, FileText, FolderOpen, Compass, Bookmark, LogOut, Plus, UserCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: Home },
@@ -22,6 +22,7 @@ const navItems = [
   { title: "My Modules", url: "/modules", icon: FolderOpen },
   { title: "Explore", url: "/explore", icon: Compass },
   { title: "Saved", url: "/saved", icon: Bookmark },
+  { title: "Profile", url: "/profile", icon: UserCircle },
 ];
 
 export function AppSidebar() {
@@ -87,6 +88,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-4">
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
+            {user?.avatar && <AvatarImage src={user.avatar} alt={user?.displayName || ""} />}
             <AvatarFallback className="text-xs bg-primary/10 text-primary">
               {user ? getInitials(user.displayName) : "??"}
             </AvatarFallback>

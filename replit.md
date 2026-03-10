@@ -23,8 +23,11 @@ client/src/
     module-detail.tsx - Module detail with notes
     explore.tsx    - Public content discovery
     saved.tsx      - Saved collection
+    profile.tsx    - User profile settings (avatar, display name)
   components/
     app-sidebar.tsx - Navigation sidebar
+    share-dialog.tsx - Collaborator sharing dialog
+    editor-toolbar.tsx - Rich text editor toolbar
 
 server/
   index.ts         - Express server setup
@@ -54,6 +57,8 @@ shared/
 - `GET /api/auth/google` - Initiate Google OAuth (requires GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET env vars)
 - `GET /api/auth/google/callback` - Google OAuth callback
 - `GET /api/auth/google/enabled` - Check if Google OAuth is configured
+- `PATCH /api/auth/profile` - Update display name
+- `POST /api/auth/avatar` - Upload avatar (base64 data URI)
 - `GET/POST /api/notes` - List/create notes
 - `GET/PATCH/DELETE /api/notes/:id` - Get/update/delete note
 - `POST /api/notes/:id/fork` - Fork a public note
@@ -72,19 +77,23 @@ shared/
 
 ## Features Added (Tier 1)
 - **Note Export**: Export notes as .txt, .md, or .html via dropdown in note editor
-- **Collaborators**: Invite users by email as viewer/editor on notes and modules; ShareDialog component
+- **Collaborators**: Invite users by email as viewer/commenter/editor on notes and modules; ShareDialog component
 - **Server-side Search**: ILIKE search on explore page with category filter dropdown
 - **Google OAuth**: Conditional Google sign-in button (shown when env vars configured); googleId column on users table
 - **Rich Text**: Tiptap editor with toolbar, HTML content storage, backward-compatible plain text loading
+- **User Profile**: Profile page at /profile with avatar upload (base64), display name editing
+- **Image Embeds**: Insert images via URL in the editor toolbar
+- **LaTeX/Math**: Inline and block math via custom Tiptap nodes with KaTeX rendering
 
 ## Rich-Text Editor
-- Tiptap-based editor (StarterKit + Underline + Table + Placeholder extensions)
+- Tiptap-based editor with extensions: StarterKit, Underline, Table, Placeholder, Image, custom MathInline/MathBlock
 - Toolbar component: `client/src/components/editor-toolbar.tsx`
 - Editor integrated in `client/src/pages/note-editor.tsx`
 - Content stored as HTML in `notes.content` column; backward-compatible with plain text (converted to `<p>` on load)
 - Tiptap CSS styles scoped under `.tiptap` class in `client/src/index.css`
 - Toolbar re-renders on editor transactions for accurate active state
-- Packages: @tiptap/react, @tiptap/starter-kit, @tiptap/pm, @tiptap/extension-underline, @tiptap/extension-table, @tiptap/extension-table-row, @tiptap/extension-table-cell, @tiptap/extension-table-header, @tiptap/extension-placeholder
+- Math nodes use KaTeX for rendering; store LaTeX in `data-latex` attribute; interactive editing via NodeView
+- Packages: @tiptap/react, @tiptap/starter-kit, @tiptap/pm, @tiptap/extension-underline, @tiptap/extension-table, @tiptap/extension-table-row, @tiptap/extension-table-cell, @tiptap/extension-table-header, @tiptap/extension-placeholder, @tiptap/extension-image, katex
 
 ## Seed Data
 - 3 sample users (mary@university.edu, alex@university.edu, sarah@university.edu) - password: password123

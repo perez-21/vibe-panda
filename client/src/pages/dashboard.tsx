@@ -67,13 +67,13 @@ export default function Dashboard() {
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="text-2xl font-bold mt-1" data-testid={`text-stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}>
+                    <span className="block text-2xl font-bold mt-1" data-testid={`text-stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}>
                       {notesLoading || modulesLoading || savedLoading ? (
                         <Skeleton className="h-8 w-12" />
                       ) : (
                         stat.value
                       )}
-                    </p>
+                    </span>
                   </div>
                   <div className={`p-2 rounded-md bg-muted ${stat.color}`}>
                     <stat.icon className="w-5 h-5" />

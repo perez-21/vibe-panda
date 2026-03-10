@@ -316,3 +316,24 @@
   background: hsl(var(--muted));
   font-weight: 600;
 }
+
+.tiptap .math-inline,
+.tiptap [data-type="math-inline"] {
+  display: inline;
+  cursor: pointer;
+}
+
+.tiptap .math-block,
+.tiptap [data-type="math-block"] {
+  display: block;
+  text-align: center;
+  margin: 1em 0;
+  cursor: pointer;
+}
+
+.tiptap img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.375rem;
+  margin: 0.5em 0;
+}

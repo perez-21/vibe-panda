@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
+import { Node as TiptapNode } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Underline as UnderlineExt } from "@tiptap/extension-underline";
 import { Table as TableExt } from "@tiptap/extension-table";
@@ -9,6 +10,10 @@ import { TableRow } from "@tiptap/extension-table-row";
 import { TableCell } from "@tiptap/extension-table-cell";
 import { TableHeader } from "@tiptap/extension-table-header";
 import { Placeholder } from "@tiptap/extension-placeholder";
+// @ts-ignore
+import katex from "katex";
+import "katex/dist/katex.min.css";
+import { Image as ImageExt } from "@tiptap/extension-image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -28,6 +33,158 @@ import { EditorToolbar } from "@/components/editor-toolbar";
 import { ShareDialog } from "@/components/share-dialog";
 import type { Note } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
+
+function MathNodeView({ node, updateAttributes, selected }: any) {
+  const [editing, setEditing] = useState(false);
+  const [latex, setLatex] = useState(node.attrs.latex || "");
+  const isBlock = node.type.name === "mathBlock";
+
+  const renderKatex = useCallback((tex: string) => {
+    try {
+      return katex.renderToString(tex, {
+        throwOnError: false,
+        displayMode: isBlock,
+      });
+    } catch {
+      return `<span class="text-destructive">${tex}</span>`;
+    }
+  }, [isBlock]);
+
+  const handleSave = useCallback(() => {
+    updateAttributes({ latex });
+    setEditing(false);
+  }, [latex, updateAttributes]);
+
+  if (editing) {
+    return (
+      <NodeViewWrapper as={isBlock ? "div" : "span"} className={isBlock ? "my-2" : "inline"}>
+        <span
+          className={`inline-flex items-center gap-1 border rounded-md p-1 bg-muted/30 ${selected ? "ring-2 ring-primary" : ""}`}
+          data-testid="math-editor"
+        >
+          <input
+            type="text"
+            value={latex}
+            onChange={(e) => setLatex(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSave();
+              }
+              if (e.key === "Escape") {
+                setEditing(false);
+                setLatex(node.attrs.latex || "");
+              }
+            }}
+            className="bg-transparent border-0 outline-none text-sm font-mono min-w-[80px] px-1"
+            autoFocus
+            data-testid="input-math-latex"
+          />
+          <button
+            onClick={handleSave}
+            className="text-xs px-1.5 py-0.5 bg-primary text-primary-foreground rounded"
+            data-testid="button-math-save"
+            type="button"
+          >
+            OK
+          </button>
+        </span>
+      </NodeViewWrapper>
+    );
+  }
+
+  return (
+    <NodeViewWrapper
+      as={isBlock ? "div" : "span"}
+      className={`${isBlock ? "my-2 text-center" : "inline"} cursor-pointer ${selected ? "ring-2 ring-primary rounded" : ""}`}
+      onClick={() => setEditing(true)}
+      data-testid="math-display"
+    >
+      <span dangerouslySetInnerHTML={{ __html: renderKatex(node.attrs.latex || "?") }} />
+    </NodeViewWrapper>
+  );
+}
+
+const MathInline = TiptapNode.create({
+  name: "mathInline",
+  group: "inline",
+  inline: true,
+  atom: true,
+
+  addAttributes() {
+    return {
+      latex: {
+        default: "E = mc^2",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-latex") || element.textContent || "",
+        renderHTML: (attributes: any) => ({ "data-latex": attributes.latex }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'span[data-type="math-inline"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const latex = HTMLAttributes["data-latex"] || "";
+    let rendered = "";
+    try {
+      rendered = katex.renderToString(latex, { throwOnError: false, displayMode: false });
+    } catch {
+      rendered = latex;
+    }
+    const span = document.createElement("span");
+    span.setAttribute("data-type", "math-inline");
+    span.setAttribute("data-latex", latex);
+    span.classList.add("math-inline");
+    span.innerHTML = rendered;
+    return { dom: span };
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(MathNodeView);
+  },
+});
+
+const MathBlock = TiptapNode.create({
+  name: "mathBlock",
+  group: "block",
+  atom: true,
+
+  addAttributes() {
+    return {
+      latex: {
+        default: "E = mc^2",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-latex") || element.textContent || "",
+        renderHTML: (attributes: any) => ({ "data-latex": attributes.latex }),
+      },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="math-block"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    const latex = HTMLAttributes["data-latex"] || "";
+    let rendered = "";
+    try {
+      rendered = katex.renderToString(latex, { throwOnError: false, displayMode: true });
+    } catch {
+      rendered = latex;
+    }
+    const div = document.createElement("div");
+    div.setAttribute("data-type", "math-block");
+    div.setAttribute("data-latex", latex);
+    div.classList.add("math-block");
+    div.innerHTML = rendered;
+    return { dom: div };
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(MathNodeView);
+  },
+});
 
 type NoteWithOwner = Note & { isOwner?: boolean; collaboratorRole?: string | null };
 
@@ -53,10 +210,16 @@ export default function NoteEditor() {
       TableRow,
       TableCell,
       TableHeader,
+      ImageExt.configure({
+        inline: true,
+        allowBase64: true,
+      }),
       Placeholder.configure({
         placeholder:
           "Start writing your note here...\n\nUse the toolbar above to format your content with headings, lists, code blocks, and more.",
       }),
+      MathInline,
+      MathBlock,
     ],
     editorProps: {
       attributes: {
@@ -90,6 +253,7 @@ export default function NoteEditor() {
   });
 
   const isOwner = isNew || note?.isOwner || note?.ownerId === user?.id;
+  const isCommenter = note?.collaboratorRole === "commenter";
   const canEdit = isOwner || note?.collaboratorRole === "editor";
 
   useEffect(() => {
@@ -261,7 +425,7 @@ export default function NoteEditor() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <h1 className="text-xl font-bold">
-            {isNew ? "New Note" : isOwner ? "Edit Note" : canEdit ? "Edit Note (Editor)" : "View Note"}
+            {isNew ? "New Note" : isOwner ? "Edit Note" : canEdit ? "Edit Note (Editor)" : isCommenter ? "View Note (Commenter)" : "View Note"}
           </h1>
           {hasChanges && canEdit && (
             <Badge variant="outline" className="text-xs">
