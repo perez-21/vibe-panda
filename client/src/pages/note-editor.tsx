@@ -31,6 +31,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { EditorToolbar } from "@/components/editor-toolbar";
 import { ShareDialog } from "@/components/share-dialog";
+import { AddToModuleDialog } from "@/components/add-to-module-dialog";
 import type { Note } from "@shared/schema";
 import { useAuth } from "@/lib/auth";
 
@@ -457,6 +458,10 @@ export default function NoteEditor() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {!isNew && (
+            <AddToModuleDialog noteId={params.id!} noteTitle={title} trigger="button" />
           )}
 
           {isOwner && !isNew && (

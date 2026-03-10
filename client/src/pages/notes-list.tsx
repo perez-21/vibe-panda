@@ -11,6 +11,7 @@ import { format } from "date-fns";
 import { useState } from "react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AddToModuleDialog } from "@/components/add-to-module-dialog";
 
 export default function NotesList() {
   const [search, setSearch] = useState("");
@@ -97,20 +98,23 @@ export default function NotesList() {
                       </div>
                     </div>
                   </Link>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (confirm("Delete this note?")) {
-                        deleteMutation.mutate(note.id);
-                      }
-                    }}
-                    data-testid={`button-delete-note-${note.id}`}
-                  >
-                    <Trash2 className="w-4 h-4 text-muted-foreground" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <AddToModuleDialog noteId={note.id} noteTitle={note.title} />
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (confirm("Delete this note?")) {
+                          deleteMutation.mutate(note.id);
+                        }
+                      }}
+                      data-testid={`button-delete-note-${note.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

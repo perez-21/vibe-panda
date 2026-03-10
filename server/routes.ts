@@ -2,9 +2,11 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, requireAuth } from "./auth";
 import { storage } from "./storage";
-import { insertNoteSchema, insertModuleSchema } from "@shared/schema";
+import { insertNoteSchema, insertModuleSchema, moduleItems, modules } from "@shared/schema";
 import { z } from "zod";
 import TurndownService from "turndown";
+import { db } from "./db";
+import { eq, and, inArray } from "drizzle-orm";
 
 const turndown = new TurndownService();
 
@@ -368,6 +370,27 @@ export async function registerRoutes(
     const removed = await storage.removeCollaborator(req.params.collabId, undefined, req.params.id);
     if (!removed) return res.status(404).json({ message: "Collaborator not found" });
     res.json({ message: "Removed" });
+  });
+
+  app.get("/api/notes/:id/modules", requireAuth, async (req, res) => {
+    const userModuleIds = (await db
+      .select({ id: modules.id })
+      .from(modules)
+      .where(eq(modules.ownerId, req.user!.id))
+    ).map((m) => m.id);
+
+    if (userModuleIds.length === 0) {
+      return res.json([]);
+    }
+
+    const result = await db
+      .select({ moduleId: moduleItems.moduleId })
+      .from(moduleItems)
+      .where(and(
+        eq(moduleItems.noteId, req.params.id),
+        inArray(moduleItems.moduleId, userModuleIds)
+      ));
+    res.json(result.map((r) => r.moduleId));
   });
 
   app.get("/api/notes/search/accessible", requireAuth, async (req, res) => {

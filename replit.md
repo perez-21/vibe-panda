@@ -59,6 +59,7 @@ shared/
 - `GET /api/auth/google/enabled` - Check if Google OAuth is configured
 - `PATCH /api/auth/profile` - Update display name
 - `POST /api/auth/avatar` - Upload avatar (base64 data URI)
+- `GET /api/notes/:id/modules` - Get user's module IDs containing this note
 - `GET /api/notes/search/accessible?q=` - Search notes accessible to user (own + public + shared)
 - `GET/POST /api/notes` - List/create notes
 - `GET/PATCH/DELETE /api/notes/:id` - Get/update/delete note

@@ -13,6 +13,7 @@ import type { Note, Module } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { AddToModuleDialog } from "@/components/add-to-module-dialog";
 
 export type PublicNote = Note & { owner: { displayName: string; username: string } };
 export type PublicModule = Module & { owner: { displayName: string; username: string }; noteCount: number };
@@ -325,6 +326,7 @@ function NoteCard({
             </div>
           </Link>
           <div className="flex items-center gap-1">
+            <AddToModuleDialog noteId={note.id} noteTitle={note.title} />
             <Button
               size="icon"
               variant="ghost"
