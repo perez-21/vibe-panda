@@ -48,6 +48,8 @@ shared/
 - **module_items**: id, moduleId, noteId, orderIndex
 - **saved_items**: id, userId, noteId, moduleId, savedAt
 - **collaborators**: id, noteId, moduleId, userId, role
+- **comment_threads**: id, noteId, fromPos, toPos, resolvedAt, createdAt
+- **comments**: id, threadId, userId, content, createdAt
 
 ## API Endpoints
 - `POST /api/auth/register` - Register new user
@@ -71,6 +73,10 @@ shared/
 - `POST /api/modules/:id/items` - Add note to module
 - `DELETE /api/modules/:id/items/:noteId` - Remove note from module
 - `GET/POST/DELETE /api/modules/:id/collaborators` - Manage module collaborators (owner only)
+- `GET/POST /api/notes/:id/comments` - List/create comment threads on a note
+- `POST /api/notes/:id/comments/:threadId` - Reply to a comment thread
+- `PATCH /api/notes/:id/comments/:threadId` - Resolve a comment thread (owner only)
+- `DELETE /api/notes/:id/comments/:threadId` - Delete a comment thread (owner only)
 - `GET /api/explore/notes?q=&category=` - Public notes with server-side search
 - `GET /api/explore/modules?q=&category=` - Public modules with server-side search
 - `GET /api/explore/categories` - Distinct category labels from public modules
@@ -88,9 +94,10 @@ shared/
 - **LaTeX/Math**: Inline and block math via custom Tiptap nodes with KaTeX rendering
 
 ## Rich-Text Editor
-- Tiptap-based editor with extensions: StarterKit, Underline, Table, Placeholder, Image, custom MathInline/MathBlock
+- Tiptap-based editor with extensions: StarterKit, Underline, Table, Placeholder, Image, custom MathInline/MathBlock, CommentDecorationExtension
 - Toolbar component: `client/src/components/editor-toolbar.tsx`
 - Editor integrated in `client/src/pages/note-editor.tsx`
+- Comment decoration extension: `client/src/extensions/comment-decoration.ts`
 - Content stored as HTML in `notes.content` column; backward-compatible with plain text (converted to `<p>` on load)
 - Tiptap CSS styles scoped under `.tiptap` class in `client/src/index.css`
 - Toolbar re-renders on editor transactions for accurate active state
