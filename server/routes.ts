@@ -599,6 +599,59 @@ export async function registerRoutes(
     res.json({ message: "Removed" });
   });
 
+  app.get("/api/modules/:id/label-votes", requireAuth, async (req, res) => {
+    try {
+      const mod = await storage.getModule(req.params.id, req.user!.id);
+      if (!mod) return res.status(404).json({ message: "Module not found" });
+
+      const isOwner = mod.ownerId === req.user!.id;
+      const collabRole = !isOwner ? await storage.getCollaboratorRole(undefined, mod.id, req.user!.id) : null;
+      if (!isOwner && !collabRole && !mod.isPublic) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const votes = await storage.getCategoryLabelVotes(mod.id);
+      const userVotes = await storage.getUserVotes(mod.id, req.user!.id);
+      res.json({ votes, userVotes });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/modules/:id/label-votes", requireAuth, async (req, res) => {
+    try {
+      const mod = await storage.getModule(req.params.id, req.user!.id);
+      if (!mod) return res.status(404).json({ message: "Module not found" });
+      if (!mod.isPublic) return res.status(403).json({ message: "Voting is only available on public modules" });
+
+      const { label, vote } = req.body;
+      if (!label || typeof label !== "string") return res.status(400).json({ message: "label is required" });
+      if (vote !== 1 && vote !== -1) return res.status(400).json({ message: "vote must be 1 or -1" });
+      if (!mod.categoryLabels.includes(label)) return res.status(400).json({ message: "Label does not exist on this module" });
+
+      await storage.voteOnCategoryLabel(mod.id, req.user!.id, label, vote);
+      const votes = await storage.getCategoryLabelVotes(mod.id);
+      const userVotes = await storage.getUserVotes(mod.id, req.user!.id);
+      res.json({ votes, userVotes });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/modules/:id/label-votes/:label", requireAuth, async (req, res) => {
+    try {
+      const mod = await storage.getModule(req.params.id, req.user!.id);
+      if (!mod) return res.status(404).json({ message: "Module not found" });
+
+      await storage.removeVote(mod.id, req.user!.id, decodeURIComponent(req.params.label));
+      const votes = await storage.getCategoryLabelVotes(mod.id);
+      const userVotes = await storage.getUserVotes(mod.id, req.user!.id);
+      res.json({ votes, userVotes });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/notifications", requireAuth, async (req, res) => {
     const notifs = await storage.getNotifications(req.user!.id);
     res.json(notifs);

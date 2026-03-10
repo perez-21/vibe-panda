@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { TagInput } from "@/components/tag-input";
 import type { Module } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -22,33 +23,34 @@ export default function ModulesList() {
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newIsPublic, setNewIsPublic] = useState(false);
-  const [newLabels, setNewLabels] = useState("");
+  const [newLabels, setNewLabels] = useState<string[]>([]);
   const { toast } = useToast();
 
   const { data: modules, isLoading } = useQuery<Module[]>({
     queryKey: ["/api/modules"],
   });
 
+  const { data: categorySuggestions } = useQuery<string[]>({
+    queryKey: ["/api/explore/categories"],
+  });
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      const labels = newLabels
-        .split(",")
-        .map((l) => l.trim())
-        .filter(Boolean);
       await apiRequest("POST", "/api/modules", {
         title: newTitle,
         description: newDescription,
         isPublic: newIsPublic,
-        categoryLabels: labels,
+        categoryLabels: newLabels,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/modules"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/explore/categories"] });
       setShowCreate(false);
       setNewTitle("");
       setNewDescription("");
       setNewIsPublic(false);
-      setNewLabels("");
+      setNewLabels([]);
       toast({ title: "Module created" });
     },
     onError: (e: any) => {
@@ -202,12 +204,12 @@ export default function ModulesList() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Category Labels (comma-separated)</Label>
-              <Input
-                data-testid="input-module-labels"
-                placeholder="e.g. Computer Science, Programming, Algorithms"
-                value={newLabels}
-                onChange={(e) => setNewLabels(e.target.value)}
+              <Label>Category Labels</Label>
+              <TagInput
+                tags={newLabels}
+                onChange={setNewLabels}
+                placeholder="Type a label and press Enter..."
+                suggestions={categorySuggestions || []}
               />
             </div>
             <div className="flex items-center gap-2">

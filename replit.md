@@ -51,6 +51,7 @@ shared/
 - **comment_threads**: id, noteId, fromPos, toPos, resolvedAt, createdAt
 - **comments**: id, threadId, userId, content, createdAt
 - **notifications**: id, userId, actorId, type, title, message, link, isRead, noteId, moduleId, createdAt
+- **category_label_votes**: id, moduleId, userId, label, vote; unique(moduleId, userId, label)
 
 ## API Endpoints
 - `POST /api/auth/register` - Register new user
@@ -87,6 +88,9 @@ shared/
 - `GET /api/notifications/unread-count` - Unread notification count
 - `PATCH /api/notifications/:id/read` - Mark notification as read
 - `POST /api/notifications/read-all` - Mark all notifications as read
+- `GET /api/modules/:id/label-votes` - Get vote scores and user's votes for module labels
+- `POST /api/modules/:id/label-votes` - Upvote/downvote a label (public modules only)
+- `DELETE /api/modules/:id/label-votes/:label` - Remove vote on a label
 
 ## Features Added (Tier 1)
 - **Note Export**: Export notes as .txt, .md, or .html via dropdown in note editor
@@ -95,6 +99,8 @@ shared/
 - **Google OAuth**: Conditional Google sign-in button (shown when env vars configured); googleId column on users table
 - **Rich Text**: Tiptap editor with toolbar, HTML content storage, backward-compatible plain text loading
 - **Notifications**: In-app notifications for note sharing, module sharing, note edits, comments, and replies; sidebar badge with unread count (polls every 30s); notifications page with mark-as-read and mark-all-as-read
+- **Category Label Voting**: Users can upvote/downvote category labels on public modules; toggle behavior (click same vote again to remove); scores displayed inline
+- **Tag Input UX**: Module creation uses tag-style input with autocomplete suggestions from existing categories; type + Enter to add, click X to remove
 - **User Profile**: Profile page at /profile with avatar upload (base64), display name editing
 - **Image Embeds**: Insert images via URL in the editor toolbar
 - **LaTeX/Math**: Inline and block math via custom Tiptap nodes with KaTeX rendering

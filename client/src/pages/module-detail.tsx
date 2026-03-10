@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, FileText, Plus, X, Globe, Lock, Clock, Search } from "lucide-react";
+import { ArrowLeft, FileText, Plus, X, Globe, Lock, Clock, Search, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import type { Module, Note, ModuleItem } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -34,6 +34,31 @@ export default function ModuleDetail() {
 
   const { data: module, isLoading } = useQuery<ModuleDetailResponse>({
     queryKey: ["/api/modules", params.id],
+  });
+
+  const { data: labelVoteData } = useQuery<{
+    votes: { label: string; score: number }[];
+    userVotes: { label: string; vote: number }[];
+  }>({
+    queryKey: ["/api/modules", params.id, "label-votes"],
+    enabled: !!params.id,
+  });
+
+  const voteMutation = useMutation({
+    mutationFn: async ({ label, vote }: { label: string; vote: 1 | -1 }) => {
+      const currentUserVote = labelVoteData?.userVotes.find((v) => v.label === label);
+      if (currentUserVote && currentUserVote.vote === vote) {
+        await apiRequest("DELETE", `/api/modules/${params.id}/label-votes/${encodeURIComponent(label)}`);
+      } else {
+        await apiRequest("POST", `/api/modules/${params.id}/label-votes`, { label, vote });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/modules", params.id, "label-votes"] });
+    },
+    onError: () => {
+      toast({ title: "Failed to vote", variant: "destructive" });
+    },
   });
 
   const { data: myNotes } = useQuery<Note[]>({
@@ -152,12 +177,53 @@ export default function ModuleDetail() {
               )}
             </div>
             {module.categoryLabels && module.categoryLabels.length > 0 && (
-              <div className="flex gap-1 mt-3 flex-wrap">
-                {module.categoryLabels.map((label) => (
-                  <Badge key={label} variant="outline" className="text-xs">
-                    {label}
-                  </Badge>
-                ))}
+              <div className="flex gap-2 mt-3 flex-wrap">
+                {module.categoryLabels.map((label) => {
+                  const voteEntry = labelVoteData?.votes.find((v) => v.label === label);
+                  const score = voteEntry?.score ?? 0;
+                  const userVote = labelVoteData?.userVotes.find((v) => v.label === label);
+                  const isUpvoted = userVote?.vote === 1;
+                  const isDownvoted = userVote?.vote === -1;
+
+                  if (!module.isPublic) {
+                    return (
+                      <Badge key={label} variant="outline" className="text-xs">
+                        {label}
+                      </Badge>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={label}
+                      className="inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-xs"
+                      data-testid={`label-vote-${label}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => voteMutation.mutate({ label, vote: 1 })}
+                        disabled={voteMutation.isPending}
+                        className={`p-0.5 rounded hover:bg-accent transition-colors ${isUpvoted ? "text-green-600" : "text-muted-foreground"}`}
+                        data-testid={`button-upvote-${label}`}
+                      >
+                        <ThumbsUp className="w-3 h-3" />
+                      </button>
+                      <span className={`min-w-[16px] text-center font-medium ${score > 0 ? "text-green-600" : score < 0 ? "text-red-500" : "text-muted-foreground"}`} data-testid={`text-vote-score-${label}`}>
+                        {score}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => voteMutation.mutate({ label, vote: -1 })}
+                        disabled={voteMutation.isPending}
+                        className={`p-0.5 rounded hover:bg-accent transition-colors ${isDownvoted ? "text-red-500" : "text-muted-foreground"}`}
+                        data-testid={`button-downvote-${label}`}
+                      >
+                        <ThumbsDown className="w-3 h-3" />
+                      </button>
+                      <span className="ml-0.5">{label}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

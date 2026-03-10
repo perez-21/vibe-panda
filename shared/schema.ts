@@ -142,6 +142,14 @@ export type InsertCollaborator = z.infer<typeof insertCollaboratorSchema>;
 export type CommentThread = typeof commentThreads.$inferSelect;
 export type Comment = typeof comments.$inferSelect;
 
+export const categoryLabelVotes = pgTable("category_label_votes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  moduleId: varchar("module_id").notNull().references(() => modules.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  label: text("label").notNull(),
+  vote: integer("vote").notNull(),
+});
+
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   isRead: true,
@@ -149,3 +157,4 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
 });
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type Notification = typeof notifications.$inferSelect;
+export type CategoryLabelVote = typeof categoryLabelVotes.$inferSelect;

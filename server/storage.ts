@@ -1,7 +1,7 @@
 import { eq, and, or, ilike, desc, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
-  users, notes, modules, moduleItems, savedItems, collaborators, commentThreads, comments, notifications,
+  users, notes, modules, moduleItems, savedItems, collaborators, commentThreads, comments, notifications, categoryLabelVotes,
   type User, type InsertUser, type Note, type InsertNote,
   type Module, type InsertModule, type ModuleItem, type InsertModuleItem,
   type SavedItem, type InsertSavedItem, type Collaborator, type InsertCollaborator,
@@ -52,6 +52,11 @@ export interface IStorage {
   resolveCommentThread(threadId: string): Promise<CommentThread | undefined>;
   deleteCommentThread(threadId: string): Promise<boolean>;
   updateCommentThreadPositions(noteId: string, updates: { threadId: string; fromPos: number; toPos: number }[]): Promise<void>;
+
+  voteOnCategoryLabel(moduleId: string, userId: string, label: string, vote: 1 | -1): Promise<void>;
+  removeVote(moduleId: string, userId: string, label: string): Promise<void>;
+  getCategoryLabelVotes(moduleId: string): Promise<{ label: string; score: number }[]>;
+  getUserVotes(moduleId: string, userId: string): Promise<{ label: string; vote: number }[]>;
 
   createNotification(data: InsertNotification): Promise<Notification>;
   getNotifications(userId: string): Promise<(Notification & { actor: { displayName: string; username: string; avatar: string | null } })[]>;
@@ -620,6 +625,54 @@ export class DatabaseStorage implements IStorage {
       ),
     );
   }
+  async voteOnCategoryLabel(moduleId: string, userId: string, label: string, vote: 1 | -1): Promise<void> {
+    await db.execute(
+      sql`INSERT INTO category_label_votes (module_id, user_id, label, vote) 
+          VALUES (${moduleId}, ${userId}, ${label}, ${vote})
+          ON CONFLICT (module_id, user_id, label) DO UPDATE SET vote = ${vote}`
+    );
+  }
+
+  async removeVote(moduleId: string, userId: string, label: string): Promise<void> {
+    await db
+      .delete(categoryLabelVotes)
+      .where(
+        and(
+          eq(categoryLabelVotes.moduleId, moduleId),
+          eq(categoryLabelVotes.userId, userId),
+          eq(categoryLabelVotes.label, label)
+        )
+      );
+  }
+
+  async getCategoryLabelVotes(moduleId: string): Promise<{ label: string; score: number }[]> {
+    const rows = await db
+      .select({
+        label: categoryLabelVotes.label,
+        score: sql<number>`sum(${categoryLabelVotes.vote})::int`,
+      })
+      .from(categoryLabelVotes)
+      .where(eq(categoryLabelVotes.moduleId, moduleId))
+      .groupBy(categoryLabelVotes.label);
+    return rows;
+  }
+
+  async getUserVotes(moduleId: string, userId: string): Promise<{ label: string; vote: number }[]> {
+    const rows = await db
+      .select({
+        label: categoryLabelVotes.label,
+        vote: categoryLabelVotes.vote,
+      })
+      .from(categoryLabelVotes)
+      .where(
+        and(
+          eq(categoryLabelVotes.moduleId, moduleId),
+          eq(categoryLabelVotes.userId, userId)
+        )
+      );
+    return rows;
+  }
+
   async createNotification(data: InsertNotification): Promise<Notification> {
     const [notification] = await db.insert(notifications).values(data).returning();
     return notification;
