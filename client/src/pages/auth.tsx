@@ -6,7 +6,14 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { BookOpen, Users, Search, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -17,16 +24,23 @@ const loginSchema = z.object({
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
-const registerSchema = z.object({
-  username: z.string().min(3, "Username must be at least 3 characters").max(20),
-  email: z.string().email("Please enter a valid email"),
-  displayName: z.string().min(2, "Display name must be at least 2 characters"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
+const registerSchema = z
+  .object({
+    username: z
+      .string()
+      .min(3, "Username must be at least 3 characters")
+      .max(20),
+    email: z.string().email("Please enter a valid email"),
+    displayName: z
+      .string()
+      .min(2, "Display name must be at least 2 characters"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -52,7 +66,13 @@ export default function AuthPage() {
 
   const registerForm = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { username: "", email: "", displayName: "", password: "", confirmPassword: "" },
+    defaultValues: {
+      username: "",
+      email: "",
+      displayName: "",
+      password: "",
+      confirmPassword: "",
+    },
   });
 
   const handleLogin = async (values: LoginFormValues) => {
@@ -60,7 +80,11 @@ export default function AuthPage() {
     try {
       await login(values.email, values.password);
     } catch (e: any) {
-      toast({ title: "Login failed", description: e.message, variant: "destructive" });
+      toast({
+        title: "Login failed",
+        description: e.message,
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -76,7 +100,11 @@ export default function AuthPage() {
         password: values.password,
       });
     } catch (e: any) {
-      toast({ title: "Registration failed", description: e.message, variant: "destructive" });
+      toast({
+        title: "Registration failed",
+        description: e.message,
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -88,10 +116,14 @@ export default function AuthPage() {
         <div className="w-full max-w-md space-y-8">
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
-              <span className="text-3xl font-bold tracking-tight">Notepanda</span>
+              <span className="text-3xl font-bold tracking-tight">
+                Notepanda
+              </span>
             </div>
             <p className="text-sm text-muted-foreground">
-              {mode === "login" ? "Welcome back! Sign in to continue." : "Create an account to get started."}
+              {mode === "login"
+                ? "Welcome back! Sign in to continue."
+                : "Create an account to get started."}
             </p>
           </div>
 
@@ -121,11 +153,15 @@ export default function AuthPage() {
           </div>
 
           {mode === "login" ? (
-            <Form {...loginForm}>
-              <form onSubmit={loginForm.handleSubmit(handleLogin)} className="space-y-4">
+            <Form {...loginForm} key="login-form">
+              <form
+                onSubmit={loginForm.handleSubmit(handleLogin)}
+                className="space-y-4"
+              >
                 <FormField
                   control={loginForm.control}
                   name="email"
+                  key="login-email"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Email</FormLabel>
@@ -144,6 +180,7 @@ export default function AuthPage() {
                 <FormField
                   control={loginForm.control}
                   name="password"
+                  key="login-password"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Password</FormLabel>
@@ -176,14 +213,18 @@ export default function AuthPage() {
                       <span className="w-full border-t" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">or</span>
+                      <span className="bg-background px-2 text-muted-foreground">
+                        or
+                      </span>
                     </div>
                   </div>
                   <Button
                     data-testid="button-google-login"
                     variant="outline"
                     className="w-full"
-                    onClick={() => { window.location.href = "/api/auth/google"; }}
+                    onClick={() => {
+                      window.location.href = "/api/auth/google";
+                    }}
                     type="button"
                   >
                     <SiGoogle className="w-4 h-4 mr-2" />
@@ -193,45 +234,39 @@ export default function AuthPage() {
               )}
             </Form>
           ) : (
-            <Form {...registerForm}>
-              <form onSubmit={registerForm.handleSubmit(handleRegister)} className="space-y-4">
-                <FormField
-                  control={registerForm.control}
-                  name="displayName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Display Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          data-testid="input-register-displayname"
-                          placeholder="Mary Johnson"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={registerForm.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Username</FormLabel>
-                      <FormControl>
-                        <Input
-                          data-testid="input-register-username"
-                          placeholder="maryjohnson"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <Form {...registerForm} key="register-form">
+              <form
+                onSubmit={registerForm.handleSubmit(handleRegister)}
+                className="space-y-4"
+              >
+                <FormItem>
+                  <FormLabel>Display Name</FormLabel>
+                  <FormControl>
+                    <Input
+                      data-testid="input-register-displayname"
+                      type="text"
+                      placeholder="Mary Johnson"
+                      {...registerForm.register("displayName")}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+                <FormItem>
+                  <FormLabel>Username</FormLabel>
+                  <FormControl>
+                    <Input
+                      data-testid="input-register-username"
+                      type="text"
+                      placeholder="maryjohnson"
+                      {...registerForm.register("username")}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
                 <FormField
                   control={registerForm.control}
                   name="email"
+                  key="register-email"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Email</FormLabel>
@@ -250,6 +285,7 @@ export default function AuthPage() {
                 <FormField
                   control={registerForm.control}
                   name="password"
+                  key="register-password"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Password</FormLabel>
@@ -268,6 +304,7 @@ export default function AuthPage() {
                 <FormField
                   control={registerForm.control}
                   name="confirmPassword"
+                  key="register-confirmPassword"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Confirm Password</FormLabel>
@@ -300,14 +337,18 @@ export default function AuthPage() {
                       <span className="w-full border-t" />
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">or</span>
+                      <span className="bg-background px-2 text-muted-foreground">
+                        or
+                      </span>
                     </div>
                   </div>
                   <Button
                     data-testid="button-google-register"
                     variant="outline"
                     className="w-full"
-                    onClick={() => { window.location.href = "/api/auth/google"; }}
+                    onClick={() => {
+                      window.location.href = "/api/auth/google";
+                    }}
                     type="button"
                   >
                     <SiGoogle className="w-4 h-4 mr-2" />
@@ -326,7 +367,9 @@ export default function AuthPage() {
             Your study materials, organized and shared.
           </h2>
           <p className="text-muted-foreground leading-relaxed">
-            Stop losing notes in WhatsApp groups. Notepanda gives students a single place to create, organize, and collaborate on study materials.
+            Stop losing notes in WhatsApp groups. Notepanda gives students a
+            single place to create, organize, and collaborate on study
+            materials.
           </p>
           <div className="space-y-4">
             <div className="flex items-start gap-4">
@@ -335,7 +378,10 @@ export default function AuthPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-sm">Rich Note Editor</h3>
-                <p className="text-sm text-muted-foreground">Create beautifully formatted notes with headings, lists, code blocks, and more.</p>
+                <p className="text-sm text-muted-foreground">
+                  Create beautifully formatted notes with headings, lists, code
+                  blocks, and more.
+                </p>
               </div>
             </div>
             <div className="flex items-start gap-4">
@@ -344,7 +390,9 @@ export default function AuthPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-sm">Organize with Modules</h3>
-                <p className="text-sm text-muted-foreground">Group related notes into modules by subject, course, or topic.</p>
+                <p className="text-sm text-muted-foreground">
+                  Group related notes into modules by subject, course, or topic.
+                </p>
               </div>
             </div>
             <div className="flex items-start gap-4">
@@ -353,7 +401,10 @@ export default function AuthPage() {
               </div>
               <div>
                 <h3 className="font-semibold text-sm">Discover & Save</h3>
-                <p className="text-sm text-muted-foreground">Browse public notes from the community and save them to your collection.</p>
+                <p className="text-sm text-muted-foreground">
+                  Browse public notes from the community and save them to your
+                  collection.
+                </p>
               </div>
             </div>
           </div>
