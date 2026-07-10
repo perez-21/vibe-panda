@@ -67,9 +67,18 @@ app.use((req, res, next) => {
 
 (async () => {
   if (config.NODE_ENV === "production") {
-    await migrate(db, {
-      migrationsFolder: path.resolve(import.meta.dirname, "..", "migrations"),
-    });
+    try {
+      await migrate(db, {
+        migrationsFolder: path.resolve(import.meta.dirname, "..", "migrations"),
+      });
+    } catch (error: any) {
+      const message = error?.message || String(error);
+      if (message.includes("already exists") || message.includes("already exists") || message.includes("relation") || message.includes("duplicate")) {
+        log(`migration warning: ${message}`, "express");
+      } else {
+        throw error;
+      }
+    }
   }
 
   const { seedDatabase } = await import("./seed");

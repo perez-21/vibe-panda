@@ -44,7 +44,12 @@ async function buildAll() {
     ...Object.keys(pkg.dependencies || {}),
     ...Object.keys(pkg.devDependencies || {}),
   ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+  const externals = [
+    ...allDeps.filter((dep) => !allowlist.includes(dep)),
+    // connect-pg-simple loads its table.sql file at runtime, so it must remain
+    // as a normal dependency instead of being bundled into dist/index.js.
+    "connect-pg-simple",
+  ];
 
   await esbuild({
     entryPoints: ["server/index.ts"],
