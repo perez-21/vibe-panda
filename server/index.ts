@@ -3,6 +3,9 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import config from "./config";
 import { createServer } from "http";
+import path from "path";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
+import { db } from "./db";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -63,6 +66,12 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  if (config.NODE_ENV === "production") {
+    await migrate(db, {
+      migrationsFolder: path.resolve(import.meta.dirname, "..", "migrations"),
+    });
+  }
+
   const { seedDatabase } = await import("./seed");
   await registerRoutes(httpServer, app);
   await seedDatabase();
